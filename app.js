@@ -267,12 +267,24 @@ function renderPlan(msg = '') {
       </details>
     </section>
     ${rows ? `<section class="card list">${rows}</section>` : ''}
+    <section class="card"><details><summary>Borrar datos de prueba</summary>
+      <p class="target">Borra registros del rango elegido, en este dispositivo y en la base. No toca la rutina ni el catálogo. <b>No se puede deshacer.</b></p>
+      <div class="row">
+        <label class="inline">Desde <input type="date" id="dfrom"></label>
+        <label class="inline">Hasta <input type="date" id="dto" value="${P.today()}"></label>
+      </div>
+      <label class="chk"><input type="checkbox" id="dtraining" checked><span>Registros de entrenamiento (incluye chequeos y cierres)</span></label>
+      <label class="chk"><input type="checkbox" id="dvideos" checked><span>Videos descartados</span></label>
+      <label>Escribí BORRAR para confirmar <input id="dconfirm" autocomplete="off" autocapitalize="characters"></label>
+      <button id="ddel" class="danger">Borrar</button>
+    </details></section>
     <p class="center"><button class="link" id="logout">Cerrar sesión</button></p>`;
   main.querySelector('#today')?.scrollIntoView({ block: 'center' });
   main.querySelector('#file').onchange = async e => { main.querySelector('#paste').value = await e.target.files[0]?.text() ?? ''; };
   main.querySelector('#load').onclick = loadPlan;
   main.querySelector('#cfile').onchange = async e => { main.querySelector('#cpaste').value = await e.target.files[0]?.text() ?? ''; };
   main.querySelector('#cload').onclick = loadCatalog;
+  main.querySelector('#ddel').onclick = deleteData;
   main.querySelector('#logout').onclick = async () => {
     const n = new Set(queue).size;
     if (n && !confirm(`Hay ${n} registros sin subir y se van a perder. ¿Salir igual?`)) return;
@@ -297,6 +309,27 @@ async function loadPlan() {
   ls.set('plan', plan);
   const orphan = P.buildExport(plan, logs, '9999-12-31').fuera_del_plan.length;
   renderPlan(`<p class="ok">Rutina "${esc(p.name)}" cargada.${orphan ? ` Hay ${orphan} registros de items que no están en esta rutina: se conservan y salen en el export como "fuera_del_plan".` : ''}</p>`);
+}
+
+async function deleteData() {
+  const v = id => main.querySelector(id);
+  const from = v('#dfrom').value || '0000-01-01', to = v('#dto').value || P.today();
+  const what = { training: v('#dtraining').checked, videos: v('#dvideos').checked };
+  if (v('#dconfirm').value.trim().toUpperCase() !== 'BORRAR') return renderPlan('<p class="error">Para borrar, escribí BORRAR en el campo de confirmación.</p>');
+  if (!what.training && !what.videos) return renderPlan('<p class="error">Elegí qué borrar.</p>');
+  if (from > to) return renderPlan('<p class="error">"Desde" es posterior a "Hasta".</p>');
+  let q = sb.from('logs').delete({ count: 'exact' }).gte('date', from).lte('date', to);
+  if (!what.training) q = q.like('item_id', '\\_video:%');
+  if (!what.videos) q = q.not('item_id', 'like', '\\_video:%');
+  const { error, count } = await q;
+  if (error) return renderPlan(`<p class="error">No se pudo borrar (¿sin conexión?): ${esc(error.message)}</p>`);
+  const gone = new Set(P.keysToDelete(logs, from, to, what));
+  gone.forEach(k => delete logs[k]);
+  queue = queue.filter(k => !gone.has(k));
+  ls.set('logs', logs);
+  ls.set('queue', queue);
+  syncBadge();
+  renderPlan(`<p class="ok">Borrados ${Math.max(count ?? 0, gone.size)} registros.</p>`);
 }
 
 async function loadCatalog() {

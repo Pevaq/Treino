@@ -107,3 +107,17 @@ test('catálogo de videos', () => {
   assert.equal(ex.video_feedback[0].reason, 'no me sirve');
   assert.deepEqual(ex.fuera_del_plan, []);
 });
+
+test('borrado de datos de prueba', () => {
+  const logs = {
+    '2026-10-20|r1': { steps: [] },
+    '2026-10-21|_day': { status: 'hecho' },
+    '2026-10-21|_video:aaaaaaaaaaa': { exercise: 'X', video_id: 'aaaaaaaaaaa' },
+    '2026-10-21|_video:bbbbbbbbbbb': { exercise: 'X', video_id: 'bbbbbbbbbbb' },
+    '2026-10-22|g1': { ex: [] },
+  };
+  const all = { training: true, videos: true };
+  assert.deepEqual(P.keysToDelete(logs, '0000-01-01', '2026-10-21', all), Object.keys(logs).slice(0, 4));
+  assert.deepEqual(P.keysToDelete(logs, '2026-10-21', '2026-10-22', { training: true, videos: false }), ['2026-10-21|_day', '2026-10-22|g1']);
+  assert.deepEqual(P.keysToDelete(logs, '0000-01-01', '9999-12-31', { training: false, videos: true }).length, 2);
+});

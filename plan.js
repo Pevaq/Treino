@@ -214,3 +214,9 @@ export function pickVideo(catalog, name, rejected) {
   const v = vids.find(v => !rejected.has(v.id));
   return v ? { video: v, exhausted: false } : { video: vids.at(-1), exhausted: true };
 }
+
+// Claves a borrar en "Borrar datos de prueba": rango de fechas inclusive; registros y/o videos descartados.
+export const keysToDelete = (logs, from, to, { training, videos }) => Object.keys(logs).filter(k => {
+  const date = k.slice(0, 10), isVideo = k.includes('|_video:');
+  return date >= from && date <= to && (isVideo ? videos : training);
+});
