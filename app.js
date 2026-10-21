@@ -234,6 +234,16 @@ function morningCard(date) {
   </section>`;
 }
 
+// Aviso de rutina ajustada por Claude (changelog del plan). Lo visto se guarda solo en este dispositivo.
+function changesCard() {
+  const unseen = P.unseenChanges(plan, ls.get('seenChange', null));
+  if (!unseen.length) return '';
+  return `<section class="card changes"><header><h3>Rutina ajustada por Claude</h3></header>
+    <ul>${unseen.map(c => `<li>${esc(c.summary)} <small class="muted">${esc(new Date(c.at).toLocaleDateString('es-AR'))}</small></li>`).join('')}</ul>
+    <button type="button" id="seen" data-at="${esc(unseen.at(-1).at)}">Entendido</button>
+  </section>`;
+}
+
 function renderDay(date) {
   const isToday = date === P.today();
   const day = P.dayOf(plan, date);
@@ -245,7 +255,7 @@ function renderDay(date) {
       <div><b>${isToday ? 'Hoy' : esc(fmtDate(date, { weekday: 'long' }))}</b><small>${esc(fmtDate(date, { day: 'numeric', month: 'long', year: 'numeric' }))}</small></div>
       <a href="#/d/${P.addDays(date, 1)}" aria-label="Día siguiente">›</a>
     </nav>
-    ${!isToday ? `<p class="center"><a href="#/">Volver a hoy</a></p>` : ''}
+    ${!isToday ? `<p class="center"><a href="#/">Volver a hoy</a></p>` : changesCard()}
     ${P.morningRequired(plan, date) ? morningCard(date) : ''}
     ${day ? day.items.map(i => itemCard(i, date)).join('') : `<section class="card center"><h3>Descanso</h3>
       ${next ? `<p>Próximo: <a href="#/d/${next.date}">${esc(fmtDate(next.date))}</a> · ${next.items.map(i => esc(i.title)).join(', ')}</p>` : '<p>No hay más días en la rutina.</p>'}</section>`}
@@ -410,6 +420,7 @@ function showVideo(name, msg = '') {
 main.addEventListener('click', e => {
   const b = e.target.closest('.play');
   if (b) { e.preventDefault(); showVideo(b.dataset.video); } // preventDefault: que no abra/cierre el ejercicio
+  if (e.target.id === 'seen') { ls.set('seenChange', e.target.dataset.at); e.target.closest('.changes').remove(); }
   if (e.target.matches('.done-all')) {
     const card = e.target.closest('[data-key]'), key = card.dataset.key;
     save(key, P.confirmItem(itemByKey(key), serialize(card)));

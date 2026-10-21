@@ -19,6 +19,9 @@ export function validatePlan(p) {
   if (!p || typeof p !== 'object') return ['El archivo no es un objeto JSON'];
   if (p.version !== 1) err.push('"version" tiene que ser 1');
   if (typeof p.name !== 'string' || !p.name) err.push('Falta "name"');
+  if (p.replanned_through != null && (!DATE.test(p.replanned_through) || isNaN(new Date(p.replanned_through)))) err.push('"replanned_through" tiene que ser YYYY-MM-DD');
+  if (p.changelog != null && (!Array.isArray(p.changelog) || p.changelog.some(c => isNaN(Date.parse(c?.at)) || typeof c?.summary !== 'string')))
+    err.push('"changelog" tiene que ser una lista de { at: fecha ISO, by, summary: texto }');
   if (!Array.isArray(p.days) || !p.days.length) return [...err, 'Falta "days" (lista no vacía)'];
   const ids = new Set();
   let prev = '';
@@ -261,3 +264,8 @@ export function stoppedAt(item, log) {
   const s = item.steps[step];
   return { step, round: s.repeat ? Math.round(fr[step] * s.repeat) + 1 : null };
 }
+
+// Entradas del changelog más nuevas que la última vista (seen = ISO o null), de la más vieja a la más nueva.
+export const unseenChanges = (plan, seen) => (plan.changelog ?? [])
+  .filter(c => !seen || Date.parse(c.at) > Date.parse(seen))
+  .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));

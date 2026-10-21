@@ -156,3 +156,15 @@ test('Terminé la sesión y dónde se frenó', () => {
   const ex = P.buildExport({ ...plan, days: [plan.days[2]] }, { '2026-10-24|r1': r }, '2026-10-01', '2026-10-31');
   assert.deepEqual([ex.days[0].items[0].confirmed_all, ex.days[0].items[0].stopped_at], [true, null]);
 });
+
+test('changelog y replanned_through', () => {
+  const p = { ...plan, replanned_through: '2026-10-23', changelog: [
+    { at: '2026-10-24T03:00:00Z', by: 'claude', summary: 'Moví el trote del 24 al 25' },
+    { at: '2026-10-22T03:00:00Z', by: 'claude', summary: 'Ajuste inicial' }] };
+  assert.deepEqual(P.validatePlan(p), []);
+  assert.match(P.validatePlan({ ...plan, replanned_through: '23/10' }).join(), /replanned_through/);
+  assert.match(P.validatePlan({ ...plan, changelog: [{ at: 'ayer', summary: 'x' }] }).join(), /changelog/);
+  assert.deepEqual(P.unseenChanges(p, null).map(c => c.summary), ['Ajuste inicial', 'Moví el trote del 24 al 25']);
+  assert.deepEqual(P.unseenChanges(p, '2026-10-22T03:00:00Z').map(c => c.summary), ['Moví el trote del 24 al 25']);
+  assert.deepEqual(P.unseenChanges(plan, null), []);
+});
