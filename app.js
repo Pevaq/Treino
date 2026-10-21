@@ -11,7 +11,7 @@ const ls = {
 };
 
 // Copia local de todo (para usar sin señal) + cola de claves pendientes de subir.
-let user = null, plan = ls.get('plan', null), logs = ls.get('logs', {}), queue = ls.get('queue', []);
+let user = null, plan = ls.get('plan', null), logs = ls.get('logs', {}), queue = ls.get('queue', []), catalog = ls.get('catalog', null);
 
 const fmtDate = (d, opts = { weekday: 'long', day: 'numeric', month: 'long' }) => new Date(d + 'T12:00').toLocaleDateString('es-AR', opts);
 
@@ -27,6 +27,10 @@ async function pull() {
   }
   const { data: pl, error } = await sb.from('plans').select('data').order('created_at', { ascending: false }).limit(1);
   if (error) throw error;
+  const { data: cat, error: e2 } = await sb.from('catalogs').select('data').limit(1);
+  if (e2) throw e2;
+  catalog = cat[0]?.data ?? null;
+  ls.set('catalog', catalog);
   const fresh = {};
   for (const r of rows) fresh[`${r.date}|${r.item_id}`] = r.data;
   for (const k of queue) fresh[k] = logs[k]; // lo no subido todavía gana
@@ -149,7 +153,7 @@ function gymBody(item, log, date) {
     }).join('');
     return `<div class="ex">
       <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">
-      <h4>${esc(ex.name)}</h4>
+      <h4>${esc(ex.name)}${catalog?.exercises?.[ex.name]?.videos?.length ? ` <button type="button" class="play" data-video="${esc(ex.name)}" aria-label="Ver video de ${esc(ex.name)}">▶</button>` : ''}</h4>
       <p class="target">${exerciseTarget(ex)}${ex.notes ? ` · <em>${esc(ex.notes)}</em>` : ''}</p>
       ${rows}
       <details ${l?.note || l?.pain != null ? 'open' : ''}><summary>Nota / dolor</summary>${pain(`ex.${i}.pain`, l?.pain)}${note(`ex.${i}.note`, l?.note)}</details>
@@ -255,18 +259,26 @@ function renderPlan(msg = '') {
         <textarea id="paste" rows="4" placeholder='{"version":1, ...}'></textarea>
         <button id="load">Cargar</button>
       </details>
+      <details><summary>Catálogo de videos${catalog ? ` (${Object.keys(catalog.exercises).length} ejercicios)` : ''}</summary>
+        <p class="target">Archivo ejercicios.json o pegá su contenido. Reemplaza el catálogo entero; los videos rechazados se siguen salteando.</p>
+        <input type="file" id="cfile" accept=".json,application/json">
+        <textarea id="cpaste" rows="4" placeholder='{"version":1, "exercises": ...}'></textarea>
+        <button id="cload">Cargar catálogo</button>
+      </details>
     </section>
     ${rows ? `<section class="card list">${rows}</section>` : ''}
     <p class="center"><button class="link" id="logout">Cerrar sesión</button></p>`;
   main.querySelector('#today')?.scrollIntoView({ block: 'center' });
   main.querySelector('#file').onchange = async e => { main.querySelector('#paste').value = await e.target.files[0]?.text() ?? ''; };
   main.querySelector('#load').onclick = loadPlan;
+  main.querySelector('#cfile').onchange = async e => { main.querySelector('#cpaste').value = await e.target.files[0]?.text() ?? ''; };
+  main.querySelector('#cload').onclick = loadCatalog;
   main.querySelector('#logout').onclick = async () => {
     const n = new Set(queue).size;
     if (n && !confirm(`Hay ${n} registros sin subir y se van a perder. ¿Salir igual?`)) return;
     await sb.auth.signOut();
-    logs = {}; queue = []; plan = null;
-    ['logs', 'queue', 'plan'].forEach(k => localStorage.removeItem(k));
+    logs = {}; queue = []; plan = null; catalog = null;
+    ['logs', 'queue', 'plan', 'catalog'].forEach(k => localStorage.removeItem(k));
     route();
   };
   const ex = main.querySelector('#export');
@@ -286,6 +298,54 @@ async function loadPlan() {
   const orphan = P.buildExport(plan, logs, '9999-12-31').fuera_del_plan.length;
   renderPlan(`<p class="ok">Rutina "${esc(p.name)}" cargada.${orphan ? ` Hay ${orphan} registros de items que no están en esta rutina: se conservan y salen en el export como "fuera_del_plan".` : ''}</p>`);
 }
+
+async function loadCatalog() {
+  let c;
+  try { c = JSON.parse(main.querySelector('#cpaste').value); } catch (e) { return renderPlan(`<p class="error">JSON inválido: ${esc(e.message)}</p>`); }
+  const err = P.validateCatalog(c);
+  if (err.length) return renderPlan(`<p class="error">El catálogo tiene errores:<br>${err.map(esc).join('<br>')}</p>`);
+  const { error } = await sb.from('catalogs').upsert({ user_id: user.id, data: c, updated_at: new Date().toISOString() });
+  if (error) return renderPlan(`<p class="error">No se pudo guardar (¿sin conexión?): ${esc(error.message)}</p>`);
+  catalog = c;
+  ls.set('catalog', catalog);
+  renderPlan(`<p class="ok">Catálogo cargado: ${Object.keys(c.exercises).length} ejercicios.</p>`);
+}
+
+// ---------- Video de demostración ----------
+
+const REASONS = ['no se ve bien', 'otro ejercicio', 'prefiero en español', 'no me sirve'];
+const dialog = document.getElementById('video');
+
+function showVideo(name, msg = '') {
+  const pick = P.pickVideo(catalog, name, P.rejectedVideos(logs));
+  if (!pick) return;
+  const { video: v, exhausted } = pick;
+  dialog.innerHTML = `<form method="dialog" class="vhead"><h3>${esc(name)}</h3><button aria-label="Cerrar">✕</button></form>
+    ${catalog.exercises[name].cue ? `<p>${esc(catalog.exercises[name].cue)}</p>` : ''}
+    ${msg}
+    <div class="vframe"><iframe src="https://www.youtube-nocookie.com/embed/${v.id}" title="${esc(v.title ?? name)}" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <p class="target">${esc([v.title, v.channel].filter(Boolean).join(' · '))} · <a href="https://www.youtube.com/shorts/${v.id}" target="_blank" rel="noopener">Abrir en YouTube</a></p>
+    ${exhausted ? '<p class="warn">No hay más opciones. Exportá y pedile a Claude videos nuevos.</p>' : `
+    <details><summary>Otro video</summary>
+      <p class="lbl">¿Por qué? (opcional)</p>
+      <div class="pills">${REASONS.map(r => `<label class="pill"><input type="radio" name="reason" value="${r}"><span>${r}</span></label>`).join('')}</div>
+      <textarea id="vnote" rows="1" placeholder="Nota" aria-label="Nota"></textarea>
+      <button type="button" id="vnext">Mostrar otro</button>
+    </details>`}`;
+  dialog.querySelector('#vnext')?.addEventListener('click', () => {
+    save(`${P.today()}|_video:${v.id}`, {
+      exercise: name, video_id: v.id,
+      reason: dialog.querySelector('input[name=reason]:checked')?.value ?? null,
+      note: dialog.querySelector('#vnote').value || null,
+      created_at: new Date().toISOString(),
+    });
+    showVideo(name);
+  });
+  if (!dialog.open) dialog.showModal();
+}
+main.addEventListener('click', e => { const b = e.target.closest('.play'); if (b) showVideo(b.dataset.video); });
+// Cerrar corta la reproducción.
+dialog.addEventListener('close', () => { dialog.innerHTML = ''; });
 
 async function exportLogs() {
   const data = JSON.stringify(P.buildExport(plan, logs, P.today()), null, 1);

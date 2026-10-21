@@ -25,3 +25,14 @@ create policy "solo dueño" on plans for all to authenticated
   using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 create policy "solo dueño" on logs for all to authenticated
   using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+-- Catálogo de videos por ejercicio (uno por usuario; cada import lo reemplaza).
+-- Los rechazos de videos van en logs con item_id '_video:<id>' (así funcionan sin señal).
+create table catalogs (
+  user_id uuid primary key default auth.uid() references auth.users on delete cascade,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table catalogs enable row level security;
+create policy "solo dueño" on catalogs for all to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));

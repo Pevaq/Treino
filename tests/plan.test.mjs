@@ -89,3 +89,21 @@ test('sesiones del PDF por rango', () => {
   assert.deepEqual(P.printSessions(plan, '2026-10-17', 1).map(i => i.id), ['g1']); // 17 → 23 inclusive
   assert.deepEqual(P.printSessions(plan, '2026-10-25', 1), []);
 });
+
+test('catálogo de videos', () => {
+  const cat = { version: 1, exercises: { Sentadilla: { cue: 'x', videos: [{ id: 'aaaaaaaaaaa' }, { id: 'bbbbbbbbbb-' }] } } };
+  assert.deepEqual(P.validateCatalog(cat), []);
+  assert.match(P.validateCatalog({ version: 1, exercises: { X: { videos: [{ id: 'corto' }] } } }).join(), /id inválido/);
+  assert.match(P.validateCatalog({ version: 1, exercises: [] }).join(), /objeto/);
+
+  const logs = { '2026-10-23|_video:aaaaaaaaaaa': { exercise: 'Sentadilla', video_id: 'aaaaaaaaaaa', reason: 'no me sirve' } };
+  const rej = P.rejectedVideos(logs);
+  assert.deepEqual(P.pickVideo(cat, 'Sentadilla', new Set()).video.id, 'aaaaaaaaaaa');
+  assert.deepEqual(P.pickVideo(cat, 'Sentadilla', rej), { video: { id: 'bbbbbbbbbb-' }, exhausted: false });
+  assert.equal(P.pickVideo(cat, 'Sentadilla', new Set(['aaaaaaaaaaa', 'bbbbbbbbbb-'])).exhausted, true);
+  assert.equal(P.pickVideo(cat, 'Prensa', rej), null);
+
+  const ex = P.buildExport(plan, logs, '2026-10-25');
+  assert.equal(ex.video_feedback[0].reason, 'no me sirve');
+  assert.deepEqual(ex.fuera_del_plan, []);
+});

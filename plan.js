@@ -167,9 +167,10 @@ export function buildExport(plan, logs, until) {
       }),
     });
   }
-  const outside = Object.keys(logs).filter(k => !inPlan.has(k) && k <= until + '|~').sort()
+  const outside = Object.keys(logs).filter(k => !inPlan.has(k) && !k.includes('|_video:') && k <= until + '|~').sort()
     .map(k => { const [date, item_id] = k.split('|'); return { date, item_id, log: logs[k] }; });
-  return { plan: plan.name, exported_at: new Date().toISOString(), until, rules: plan.rules ?? null, days, fuera_del_plan: outside };
+  const video_feedback = Object.keys(logs).filter(k => k.includes('|_video:')).sort().map(k => logs[k]);
+  return { plan: plan.name, exported_at: new Date().toISOString(), until, rules: plan.rules ?? null, days, fuera_del_plan: outside, video_feedback };
 }
 
 // ---------- Resumen para el profesional ----------
@@ -185,4 +186,31 @@ export function printSessions(plan, from, weeks) {
   const to = weeks ? addDays(from, 7 * weeks - 1) : '9999-12-31';
   return plan.days.filter(d => !weeks || (d.date >= from && d.date <= to))
     .flatMap(d => d.items.filter(i => ['gym', 'run', 'field'].includes(i.type)).map(i => ({ date: d.date, ...i })));
+}
+
+// ---------- Catálogo de videos ----------
+// Los rechazos se guardan como logs "fecha|_video:<id>" para que funcionen sin señal y salgan en el export.
+
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+export function validateCatalog(c) {
+  const err = [];
+  if (!c || typeof c !== 'object') return ['El archivo no es un objeto JSON'];
+  if (c.version !== 1) err.push('"version" tiene que ser 1');
+  if (!c.exercises || typeof c.exercises !== 'object' || Array.isArray(c.exercises)) return [...err, '"exercises" tiene que ser un objeto'];
+  for (const [name, e] of Object.entries(c.exercises)) {
+    if (!Array.isArray(e?.videos)) { err.push(`${name}: falta "videos"`); continue; }
+    e.videos.forEach((v, i) => VIDEO_ID.test(v?.id) || err.push(`${name} video ${i + 1}: id inválido (${v?.id})`));
+  }
+  return err.slice(0, 20);
+}
+
+export const rejectedVideos = logs => new Set(Object.keys(logs).filter(k => k.includes('|_video:')).map(k => k.split('|_video:')[1]));
+
+// Primer video no rechazado; si no queda ninguno, el último con exhausted = true.
+export function pickVideo(catalog, name, rejected) {
+  const vids = catalog?.exercises?.[name]?.videos ?? [];
+  if (!vids.length) return null;
+  const v = vids.find(v => !rejected.has(v.id));
+  return v ? { video: v, exhausted: false } : { video: vids.at(-1), exhausted: true };
 }
