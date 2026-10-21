@@ -11,7 +11,7 @@ const ls = {
 };
 
 // Copia local de todo (para usar sin señal) + cola de claves pendientes de subir.
-let user = null, plan = ls.get('plan', null), logs = ls.get('logs', {}), queue = ls.get('queue', []), catalog = ls.get('catalog', null);
+let user = null, plan = ls.get('plan', null), logs = ls.get('logs', {}), queue = ls.get('queue', []), catalog = ls.get('catalog', null), planId = ls.get('planId', null);
 
 const fmtDate = (d, opts = { weekday: 'long', day: 'numeric', month: 'long' }) => new Date(d + 'T12:00').toLocaleDateString('es-AR', opts);
 
@@ -25,7 +25,7 @@ async function pull() {
     rows.push(...data);
     if (data.length < 1000) break;
   }
-  const { data: pl, error } = await sb.from('plans').select('data').order('created_at', { ascending: false }).limit(1);
+  const { data: pl, error } = await sb.from('plans').select('id,data').order('created_at', { ascending: false }).limit(1);
   if (error) throw error;
   const { data: cat, error: e2 } = await sb.from('catalogs').select('data').limit(1);
   if (e2) throw e2;
@@ -36,6 +36,8 @@ async function pull() {
   for (const k of queue) fresh[k] = logs[k]; // lo no subido todavía gana
   logs = fresh;
   plan = pl[0]?.data ?? null;
+  planId = pl[0]?.id ?? null;
+  ls.set('planId', planId);
   ls.set('logs', logs);
   ls.set('plan', plan);
 }
@@ -251,6 +253,10 @@ function renderPlan(msg = '') {
     <section class="card">
       <header><h3>${plan ? esc(plan.name) : 'Sin rutina cargada'}</h3></header>
       ${plan ? `<p class="target">${esc(fmtDate(plan.days[0].date))} → ${esc(fmtDate(plan.days.at(-1).date))}</p>
+        <div class="row">
+          <label class="inline">Desde <input type="date" id="exfrom" value="${plan.days[0].date}"></label>
+          <label class="inline">Hasta <input type="date" id="exto" value="${P.today()}"></label>
+        </div>
         <button id="export">Exportar lo hecho (copiar + descargar)</button>
         <a class="button" href="#/imprimir">PDF para el profesional</a>` : ''}
       <details ${plan ? '' : 'open'}><summary>Cargar rutina nueva</summary>
@@ -260,7 +266,7 @@ function renderPlan(msg = '') {
         <button id="load">Cargar</button>
       </details>
       <details><summary>Catálogo de videos${catalog ? ` (${Object.keys(catalog.exercises).length} ejercicios)` : ''}</summary>
-        <p class="target">Archivo ejercicios.json o pegá su contenido. Reemplaza el catálogo entero; los videos rechazados se siguen salteando.</p>
+        <p class="target">Archivo ejercicios.json o pegá su contenido. <b>Reemplaza el catálogo actual entero, incluidos los videos que agregó Claude de noche.</b> Los videos rechazados se siguen salteando.</p>
         <input type="file" id="cfile" accept=".json,application/json">
         <textarea id="cpaste" rows="4" placeholder='{"version":1, "exercises": ...}'></textarea>
         <button id="cload">Cargar catálogo</button>
@@ -289,8 +295,8 @@ function renderPlan(msg = '') {
     const n = new Set(queue).size;
     if (n && !confirm(`Hay ${n} registros sin subir y se van a perder. ¿Salir igual?`)) return;
     await sb.auth.signOut();
-    logs = {}; queue = []; plan = null; catalog = null;
-    ['logs', 'queue', 'plan', 'catalog'].forEach(k => localStorage.removeItem(k));
+    logs = {}; queue = []; plan = null; catalog = null; planId = null;
+    ['logs', 'queue', 'plan', 'catalog', 'planId'].forEach(k => localStorage.removeItem(k));
     route();
   };
   const ex = main.querySelector('#export');
@@ -303,11 +309,13 @@ async function loadPlan() {
   const err = P.validatePlan(p);
   if (err.length) return renderPlan(`<p class="error">La rutina tiene errores:<br>${err.map(esc).join('<br>')}</p>`);
   if (plan && !confirm(`¿Reemplazar "${plan.name}" por "${p.name}"?`)) return;
-  const { error } = await sb.from('plans').insert({ user_id: user.id, name: p.name, data: p });
+  const { data: row, error } = await sb.from('plans').insert({ user_id: user.id, name: p.name, data: p }).select('id').single();
   if (error) return renderPlan(`<p class="error">No se pudo guardar (¿sin conexión?): ${esc(error.message)}</p>`);
   plan = p;
+  planId = row.id;
   ls.set('plan', plan);
-  const orphan = P.buildExport(plan, logs, '9999-12-31').fuera_del_plan.length;
+  ls.set('planId', planId);
+  const orphan = P.buildExport(plan, logs, '0000-01-01', '9999-12-31').fuera_del_plan.length;
   renderPlan(`<p class="ok">Rutina "${esc(p.name)}" cargada.${orphan ? ` Hay ${orphan} registros de items que no están en esta rutina: se conservan y salen en el export como "fuera_del_plan".` : ''}</p>`);
 }
 
@@ -337,6 +345,7 @@ async function loadCatalog() {
   try { c = JSON.parse(main.querySelector('#cpaste').value); } catch (e) { return renderPlan(`<p class="error">JSON inválido: ${esc(e.message)}</p>`); }
   const err = P.validateCatalog(c);
   if (err.length) return renderPlan(`<p class="error">El catálogo tiene errores:<br>${err.map(esc).join('<br>')}</p>`);
+  if (catalog && !confirm('Esto reemplaza el catálogo actual, incluidos los videos agregados por Claude. ¿Seguir?')) return;
   const { error } = await sb.from('catalogs').upsert({ user_id: user.id, data: c, updated_at: new Date().toISOString() });
   if (error) return renderPlan(`<p class="error">No se pudo guardar (¿sin conexión?): ${esc(error.message)}</p>`);
   catalog = c;
@@ -381,10 +390,12 @@ main.addEventListener('click', e => { const b = e.target.closest('.play'); if (b
 dialog.addEventListener('close', () => { dialog.innerHTML = ''; });
 
 async function exportLogs() {
-  const data = JSON.stringify(P.buildExport(plan, logs, P.today()), null, 1);
+  const from = main.querySelector('#exfrom').value || plan.days[0].date, to = main.querySelector('#exto').value || P.today();
+  if (from > to) return renderPlan('<p class="error">"Desde" es posterior a "Hasta".</p>');
+  const data = JSON.stringify(P.buildExport(plan, logs, from, to, planId), null, 1);
   let copied = false;
   try { await navigator.clipboard.writeText(data); copied = true; } catch { /* sin permiso de portapapeles: queda la descarga */ }
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: `treino-export-${P.today()}.json` });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: `treino-export-${from}_${to}.json` });
   a.click();
   URL.revokeObjectURL(a.href);
   renderPlan(`<p class="ok">${copied ? 'Copiado al portapapeles y descargado.' : 'Descargado.'} Pegáselo a Claude con tu comentario.</p>`);

@@ -145,32 +145,38 @@ export function adherence(plan, logs, until) {
   return { week: Object.values(week), stage: Object.values(stage) };
 }
 
-export function buildExport(plan, logs, until) {
-  const st = stages(plan), inPlan = new Set();
-  const days = [];
-  const dates = new Set(plan.days.filter(d => d.date <= until).map(d => d.date));
-  plan.days.forEach(d => d.items.some(i => i.impact) && addDays(d.date, 1) <= until && dates.add(addDays(d.date, 1)));
-  for (const date of [...dates].sort()) {
+// Export de lo realizado en [from, to] (inclusive). Los días planificados sin cierre llevan un estado derivado
+// de los items (status_auto: true): ninguno hecho → "no hecho", todos → "hecho", si no → "parcial".
+export function buildExport(plan, logs, from, to, planId = null) {
+  const st = stages(plan), inPlan = new Set(), inRange = d => d >= from && d <= to;
+  const dates = new Set(plan.days.map(d => d.date).filter(inRange));
+  plan.days.forEach(d => d.items.some(i => i.impact) && inRange(addDays(d.date, 1)) && dates.add(addDays(d.date, 1)));
+  const days = [...dates].sort().map(date => {
     const day = dayOf(plan, date), dl = logs[`${date}|_day`];
     inPlan.add(`${date}|_day`).add(`${date}|_morning`);
-    days.push({
-      date,
-      status: dl?.status ?? 'sin registrar',
-      note: dl?.note ?? null,
-      morning_required: morningRequired(plan, date),
-      morning: logs[`${date}|_morning`] ?? null,
-      items: (day?.items ?? []).map(i => {
-        const k = `${date}|${i.id}`;
-        inPlan.add(k);
-        const [done, total] = itemProgress(i, logs[k]);
-        return { id: i.id, type: i.type, title: i.title, stage: st[i.id], progress: `${+done.toFixed(2)}/${total}`, log: logs[k] ?? null };
-      }),
+    const items = (day?.items ?? []).map(i => {
+      const k = `${date}|${i.id}`;
+      inPlan.add(k);
+      const [done, total] = itemProgress(i, logs[k]);
+      return { id: i.id, type: i.type, title: i.title, stage: st[i.id], progress: `${+done.toFixed(2)}/${total}`, frac: total ? done / total : 0, log: logs[k] ?? null };
     });
-  }
-  const outside = Object.keys(logs).filter(k => !inPlan.has(k) && !k.includes('|_video:') && k <= until + '|~').sort()
+    const auto = !items.length ? null : items.every(i => i.frac === 1) ? 'hecho' : items.some(i => i.frac > 0) ? 'parcial' : 'no hecho';
+    const prevImpact = dayOf(plan, addDays(date, -1))?.items.filter(i => i.impact).map(i => i.id) ?? [];
+    return {
+      date,
+      status: dl?.status ?? auto,
+      status_auto: !dl?.status && !!auto,
+      note: dl?.note ?? null,
+      morning_after: prevImpact.length ? prevImpact : null,
+      morning: logs[`${date}|_morning`] ?? null,
+      items: items.map(({ frac, ...i }) => i),
+    };
+  });
+  const keys = Object.keys(logs).filter(k => inRange(k.slice(0, 10))).sort();
+  const outside = keys.filter(k => !inPlan.has(k) && !k.includes('|_video:'))
     .map(k => { const [date, item_id] = k.split('|'); return { date, item_id, log: logs[k] }; });
-  const video_feedback = Object.keys(logs).filter(k => k.includes('|_video:')).sort().map(k => logs[k]);
-  return { plan: plan.name, exported_at: new Date().toISOString(), until, rules: plan.rules ?? null, days, fuera_del_plan: outside, video_feedback };
+  const video_feedback = keys.filter(k => k.includes('|_video:')).map(k => ({ date: k.slice(0, 10), ...logs[k] }));
+  return { plan: plan.name, plan_id: planId, from, to, exported_at: new Date().toISOString(), rules: plan.rules ?? null, days, fuera_del_plan: outside, video_feedback };
 }
 
 // ---------- Resumen para el profesional ----------

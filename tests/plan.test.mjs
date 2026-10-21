@@ -71,11 +71,17 @@ test('último peso, series de dolor, adherencia y export', () => {
   assert.equal(ad.week.length, 2);
   assert.equal(ad.stage[0].planned, 4);
 
-  const ex = P.buildExport(plan, logs, '2026-10-25');
+  const ex = P.buildExport(plan, logs, '2026-10-01', '2026-10-25', 7);
+  assert.equal(ex.plan_id, 7);
   assert.deepEqual(ex.days.map(d => d.date), ['2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25']);
   assert.equal(ex.days[3].morning.pain, 4);
+  assert.deepEqual(ex.days[3].morning_after, ['r1']);
+  assert.equal(ex.days[3].status, null); // día sin items planificados, solo chequeo
   assert.equal(ex.days[0].items[0].log, null);
-  assert.equal(ex.days[0].status, 'sin registrar');
+  assert.deepEqual([ex.days[0].status, ex.days[0].status_auto], ['no hecho', true]);
+  assert.equal(ex.days[1].status, 'parcial');
+  assert.equal(ex.days[2].status, 'hecho');
+  assert.deepEqual(P.buildExport(plan, logs, '2026-10-23', '2026-10-23').days.map(d => d.date), ['2026-10-23']);
   assert.deepEqual(ex.fuera_del_plan.map(r => r.item_id), ['old']);
 });
 
@@ -103,8 +109,8 @@ test('catálogo de videos', () => {
   assert.equal(P.pickVideo(cat, 'Sentadilla', new Set(['aaaaaaaaaaa', 'bbbbbbbbbb-'])).exhausted, true);
   assert.equal(P.pickVideo(cat, 'Prensa', rej), null);
 
-  const ex = P.buildExport(plan, logs, '2026-10-25');
-  assert.equal(ex.video_feedback[0].reason, 'no me sirve');
+  const ex = P.buildExport(plan, logs, '2026-10-01', '2026-10-25');
+  assert.deepEqual([ex.video_feedback[0].reason, ex.video_feedback[0].date], ['no me sirve', '2026-10-23']);
   assert.deepEqual(ex.fuera_del_plan, []);
 });
 
