@@ -247,7 +247,8 @@ function renderPlan(msg = '') {
     <section class="card">
       <header><h3>${plan ? esc(plan.name) : 'Sin rutina cargada'}</h3></header>
       ${plan ? `<p class="target">${esc(fmtDate(plan.days[0].date))} → ${esc(fmtDate(plan.days.at(-1).date))}</p>
-        <button id="export">Exportar lo hecho (copiar + descargar)</button>` : ''}
+        <button id="export">Exportar lo hecho (copiar + descargar)</button>
+        <a class="button" href="#/imprimir">PDF para el profesional</a>` : ''}
       <details ${plan ? '' : 'open'}><summary>Cargar rutina nueva</summary>
         <p class="target">Elegí el archivo .json o pegá su contenido. Reemplaza la rutina vigente; lo ya registrado se conserva.</p>
         <input type="file" id="file" accept=".json,application/json">
@@ -341,6 +342,40 @@ async function renderAnalysis() {
   });
 }
 
+// Detalle imprimible de las sesiones gym/run/field; en Android Chrome window.print() permite "Guardar como PDF".
+function renderPrint() {
+  const fd = d => `${fmtDate(d, { weekday: 'short' }).replace('.', '')} ${fmtDate(d, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  const LABEL = { gym: 'Gimnasio', run: 'Trote', field: 'Campo' };
+  const sessions = plan.days.flatMap(d => d.items.filter(i => LABEL[i.type]).map(i => ({ date: d.date, ...i })));
+  const td = (...cells) => cells.map(c => `<td>${c ?? ''}</td>`).join('') + '<td></td>';
+  const small = t => t ? `<br><small>${esc(t)}</small>` : '';
+  const side = x => x.per_side ? ' por lado' : '';
+  const gymRows = ex => ex.flatMap(x => Array.isArray(x.sets)
+    ? x.sets.map((s, j) => `<tr>${td(j ? '' : esc(x.name) + small(x.notes), j + 1, esc((s.reps ?? s.time ?? x.reps ?? x.time ?? '') + side(x)), esc(s.weight ?? x.weight ?? '–'), esc(x.rest))}</tr>`)
+    : [`<tr>${td(esc(x.name) + small(x.notes), x.sets, esc((x.reps ?? x.time ?? '') + side(x)), esc(x.weight ?? '–'), esc(x.rest))}</tr>`]);
+  const stepRows = (steps, depth = 0) => steps.flatMap(s => s.repeat
+    ? [`<tr><td colspan="5" style="padding-left:${6 + depth * 18}px"><b>${s.repeat} veces:</b></td></tr>`, ...stepRows(s.steps, depth + 1)]
+    : [`<tr><td style="padding-left:${6 + depth * 18}px">${esc(s.do)}${small(s.notes)}</td>${td(
+      esc([s.sets && `${s.sets} ×`, s.reps].filter(Boolean).join(' ') + side(s)),
+      esc([s.time, s.distance].filter(Boolean).join(' · ')),
+      esc([s.intensity, s.pace && `${s.pace}/km`].filter(Boolean).join(' · ')))}</tr>`]);
+  main.innerHTML = `<article class="print">
+    <p class="noprint"><button onclick="print()">Imprimir / Guardar PDF</button> <a href="#/plan">Volver</a></p>
+    <h1>${esc(plan.name)}</h1>
+    <p class="target">${esc(fd(plan.days[0].date))} al ${esc(fd(plan.days.at(-1).date))} · ${sessions.length} sesiones</p>
+    ${sessions.map(i => {
+      const meta = [i.stage, i.notes, i.type === 'run' && `${P.runMinutes(i.steps)}' de trote`].filter(Boolean).map(esc).join(' · ');
+      return `<section class="session">
+        <h2>${LABEL[i.type]} · ${esc(fd(i.date))}${i.title.toLowerCase() !== LABEL[i.type].toLowerCase() ? ` — ${esc(i.title)}` : ''}</h2>
+        ${meta ? `<small>${meta}</small>` : ''}
+        <table>${i.type === 'gym'
+          ? `<tr><th>Ejercicio</th><th>Series</th><th>Reps/tiempo</th><th>Peso (kg)</th><th>Pausa</th><th class="obs">Observaciones</th></tr>${gymRows(i.exercises).join('')}`
+          : `<tr><th>Trabajo</th><th>Series × reps</th><th>Tiempo/distancia</th><th>Intensidad</th><th class="obs">Observaciones</th></tr>${stepRows(i.steps).join('')}`}
+        </table></section>`;
+    }).join('')}
+  </article>`;
+}
+
 function renderLogin(msg = '') {
   main.innerHTML = `<form class="card" id="login">
     <header><h3>Entrar</h3></header>
@@ -364,6 +399,7 @@ function route() {
   if (!user) return renderLogin();
   if (!plan || h === '/plan') return renderPlan();
   if (h === '/analisis') return renderAnalysis();
+  if (h === '/imprimir') return renderPrint();
   renderDay(/^\/d\/\d{4}-\d{2}-\d{2}$/.test(h) ? h.slice(3) : P.today());
 }
 addEventListener('hashchange', route);

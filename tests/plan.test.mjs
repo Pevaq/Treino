@@ -78,3 +78,8 @@ test('último peso, series de dolor, adherencia y export', () => {
   assert.equal(ex.days[0].status, 'sin registrar');
   assert.deepEqual(ex.fuera_del_plan.map(r => r.item_id), ['old']);
 });
+
+test('minutos de trote', () => {
+  assert.equal(P.runMinutes(plan.days[2].items[0].steps), 8);
+  assert.equal(P.runMinutes([{ repeat: 2, steps: [{ repeat: 3, steps: [{ do: 'trote suave', time: '30s' }] }] }]), 3);
+});

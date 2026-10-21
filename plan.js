@@ -171,3 +171,11 @@ export function buildExport(plan, logs, until) {
     .map(k => { const [date, item_id] = k.split('|'); return { date, item_id, log: logs[k] }; });
   return { plan: plan.name, exported_at: new Date().toISOString(), until, rules: plan.rules ?? null, days, fuera_del_plan: outside };
 }
+
+// ---------- Resumen para el profesional ----------
+
+const secs = t => { const m = /^\s*(\d+(?:\.\d+)?)\s*(min|s)\s*$/.exec(t ?? ''); return m ? m[1] * (m[2] === 'min' ? 60 : 1) : 0; };
+const trotSecs = (steps, mult = 1) => steps.reduce((a, s) =>
+  a + (s.repeat ? trotSecs(s.steps, mult * s.repeat) : (s.do ?? '').includes('trote') ? secs(s.time) * mult : 0), 0);
+export const runMinutes = steps => Math.round(trotSecs(steps) / 6) / 10;
+
