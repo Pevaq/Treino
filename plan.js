@@ -74,6 +74,9 @@ export const setsOf = ex => Array.isArray(ex.sets)
   : Array.from({ length: ex.sets }, () => ({ reps: ex.reps, time: ex.time, weight: ex.weight }));
 
 // [hecho, total] en unidades: series en gym, pasos en run/field (un repeat parcial cuenta su fracción).
+// Un repeat cuenta sus vueltas completadas aunque no esté tildado ("me frené en la vuelta N").
+const stepFrac = (s, l) => s.repeat ? Math.min(l?.completed ?? (l?.done ? s.repeat : 0), s.repeat) / s.repeat : l?.done ? 1 : 0;
+
 export function itemProgress(item, log) {
   if (item.type === 'gym') {
     let done = 0, total = 0;
@@ -81,11 +84,7 @@ export function itemProgress(item, log) {
     return [done, total];
   }
   if (item.type === 'run' || item.type === 'field') {
-    const done = item.steps.reduce((a, s, i) => {
-      const l = log?.steps?.[i];
-      if (!l?.done) return a;
-      return a + (s.repeat ? Math.min(l.completed ?? s.repeat, s.repeat) / s.repeat : 1);
-    }, 0);
+    const done = item.steps.reduce((a, s, i) => a + stepFrac(s, log?.steps?.[i]), 0);
     return [done, item.steps.length];
   }
   return [log?.done ? 1 : 0, 1];
@@ -158,7 +157,10 @@ export function buildExport(plan, logs, from, to, planId = null) {
       const k = `${date}|${i.id}`;
       inPlan.add(k);
       const [done, total] = itemProgress(i, logs[k]);
-      return { id: i.id, type: i.type, title: i.title, stage: st[i.id], progress: `${+done.toFixed(2)}/${total}`, frac: total ? done / total : 0, log: logs[k] ?? null };
+      return {
+        id: i.id, type: i.type, title: i.title, stage: st[i.id], progress: `${+done.toFixed(2)}/${total}`, frac: total ? done / total : 0,
+        confirmed_all: !!logs[k]?.confirmed && done === total, stopped_at: stoppedAt(i, logs[k]), log: logs[k] ?? null,
+      };
     });
     const auto = !items.length ? null : items.every(i => i.frac === 1) ? 'hecho' : items.some(i => i.frac > 0) ? 'parcial' : 'no hecho';
     const prevImpact = dayOf(plan, addDays(date, -1))?.items.filter(i => i.impact).map(i => i.id) ?? [];
@@ -226,3 +228,36 @@ export const keysToDelete = (logs, from, to, { training, videos }) => Object.key
   const date = k.slice(0, 10), isVideo = k.includes('|_video:');
   return date >= from && date <= to && (isVideo ? videos : training);
 });
+
+// ---------- "Terminé la sesión" ----------
+// Completa lo no tocado: en gym, los ejercicios sin series tildadas ni skip; en run/field, todo si no hay pasos tildados.
+// Editar kg/reps sin tildar no cuenta como tocado. `log` es el log del card con los valores precargados.
+export function confirmItem(item, log) {
+  const l = structuredClone(log ?? {});
+  if (item.type === 'gym') {
+    item.exercises.forEach((ex, i) => {
+      const e = (l.ex ??= [])[i] ??= { name: ex.name };
+      e.sets ??= [];
+      if (e.skip || e.sets.some(s => s?.done)) return;
+      setsOf(ex).forEach((_, j) => { e.sets[j] = { ...e.sets[j], done: true }; });
+    });
+  } else if (!(l.steps ?? []).some(s => s?.done)) {
+    l.steps = item.steps.map((s, i) => ({ ...l.steps?.[i], done: true, ...(s.repeat ? { completed: s.repeat } : {}) }));
+  }
+  return { ...l, confirmed: true };
+}
+
+// Dónde se frenó: gym → [{ex, set}] por ejercicio parcial (base 0); run/field → {step, round} o null.
+export function stoppedAt(item, log) {
+  if (item.type === 'gym') return item.exercises.flatMap((ex, i) => {
+    const e = log?.ex?.[i], sets = setsOf(ex).map((_, j) => !!e?.sets?.[j]?.done);
+    return !e?.skip && sets.some(Boolean) && !sets.every(Boolean) ? [{ ex: i, set: sets.indexOf(false) }] : [];
+  });
+  if (item.type !== 'run' && item.type !== 'field') return null;
+  const fr = item.steps.map((s, i) => stepFrac(s, log?.steps?.[i]));
+  if (!fr.some(f => f > 0)) return null;
+  const step = fr.findIndex(f => f < 1);
+  if (step < 0) return null;
+  const s = item.steps[step];
+  return { step, round: s.repeat ? Math.round(fr[step] * s.repeat) + 1 : null };
+}

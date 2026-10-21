@@ -84,7 +84,7 @@ setInterval(flush, 30000);
 // Cada input lleva data-p con la ruta dentro del log del card (ej. "ex.0.sets.1.kg").
 // Al cambiar algo se re-arma el log entero del card leyendo sus inputs.
 
-const num = (p, v, ph = '', cls = '') => `<input type="number" inputmode="decimal" step="any" min="0" class="${cls}" data-p="${p}" value="${v ?? ''}" placeholder="${esc(ph)}" aria-label="${esc(ph)}">`;
+const num = (p, v, ph = '', cls = '') => `<input type="number" inputmode="decimal" step="any" min="0" class="${cls}" ${p ? `data-p="${p}"` : ''} value="${v ?? ''}" placeholder="${esc(ph)}" aria-label="${esc(ph)}">`;
 const chk = (p, v, label) => `<label class="chk"><input type="checkbox" data-p="${p}" ${v ? 'checked' : ''}><span>${label}</span></label>`;
 const note = (p, v, ph = 'Nota') => `<textarea data-p="${p}" rows="1" placeholder="${ph}" aria-label="${ph}">${esc(v)}</textarea>`;
 const pain = (p, v, label = 'Dolor 0-10') => `<label class="pain">${label} <select data-p="${p}" data-t="num"><option value="">—</option>${[...Array(11).keys()].map(n => `<option ${v === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`;
@@ -97,6 +97,7 @@ function serialize(card) {
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (v === '') continue;
     if (el.type === 'number' || el.dataset.t === 'num') v = Number(v);
+    if (el.dataset.t === 'bool') v = v === 'true';
     const ks = el.dataset.p.split('.');
     let t = o;
     ks.slice(0, -1).forEach((k, i) => { t = t[k] ??= /^\d+$/.test(ks[i + 1]) ? [] : {}; });
@@ -109,9 +110,12 @@ function onEdit(e) {
   const card = e.target.closest('[data-key]');
   if (!card) return;
   const key = card.dataset.key;
+  // "kg para todas" copia el valor a cada serie del ejercicio (no tilda nada).
+  if (e.target.matches('.kgall')) e.target.closest('.ex').querySelectorAll('input[data-p$=".kg"]').forEach(i => { i.value = e.target.value; });
   save(key, serialize(card));
-  const prog = card.querySelector('.prog');
-  if (prog) prog.textContent = progText(itemByKey(key), logs[key]);
+  const item = itemByKey(key), prog = card.querySelector('.prog');
+  if (prog) prog.textContent = progText(item, logs[key]);
+  if (item?.type === 'gym') card.querySelectorAll('.exstat').forEach((el, i) => { el.textContent = exStatus(item.exercises[i], logs[key]?.ex?.[i]); });
   if (e.target.matches('textarea')) grow(e.target);
 }
 main.addEventListener('change', onEdit);
@@ -139,10 +143,18 @@ function exerciseTarget(ex) {
     .filter(Boolean).map(esc).join(' · ');
 }
 
+// Estado corto de un ejercicio para la línea compacta.
+function exStatus(ex, l) {
+  if (l?.skip) return 'no lo hice';
+  const sets = P.setsOf(ex), d = sets.filter((_, j) => l?.sets?.[j]?.done).length;
+  return d === sets.length ? '✓' : d ? `${d} de ${sets.length}` : '—';
+}
+
 function gymBody(item, log, date) {
   return item.exercises.map((ex, i) => {
     const l = log?.ex?.[i];
     const last = P.lastWeight(logs, ex.name, date);
+    const kgShown = l?.sets?.find(s => s?.kg != null)?.kg ?? ex.weight ?? last;
     const rows = P.setsOf(ex).map((s, j) => {
       const sl = l?.sets?.[j];
       const reps = sl?.reps ?? (s.reps != null ? parseInt(s.reps) || null : null);
@@ -153,13 +165,21 @@ function gymBody(item, log, date) {
         ${num(`ex.${i}.sets.${j}.kg`, sl?.kg ?? s.weight ?? last, 'kg')}<span class="u">kg</span>`}
       </div>`;
     }).join('');
-    return `<div class="ex">
+    const timedOnly = P.setsOf(ex).every(s => s.reps == null && s.time);
+    return `<details class="ex">
+      <summary>
+        <span class="exname">${esc(ex.name)}</span>
+        <span class="target">${exerciseTarget(ex)}${!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly ? ` · ${esc(kgShown)} kg` : ''}</span>
+        <span class="exstat">${exStatus(ex, l)}</span>
+        ${catalog?.exercises?.[ex.name]?.videos?.length ? `<button type="button" class="play" data-video="${esc(ex.name)}" aria-label="Ver video de ${esc(ex.name)}">▶</button>` : ''}
+      </summary>
       <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">
-      <h4>${esc(ex.name)}${catalog?.exercises?.[ex.name]?.videos?.length ? ` <button type="button" class="play" data-video="${esc(ex.name)}" aria-label="Ver video de ${esc(ex.name)}">▶</button>` : ''}</h4>
-      <p class="target">${exerciseTarget(ex)}${ex.notes ? ` · <em>${esc(ex.notes)}</em>` : ''}</p>
+      ${ex.notes ? `<p class="target"><em>${esc(ex.notes)}</em></p>` : ''}
+      ${timedOnly ? '' : `<label class="inline">kg para todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
       ${rows}
+      ${chk(`ex.${i}.skip`, l?.skip, 'No lo hice')}
       <details ${l?.note || l?.pain != null ? 'open' : ''}><summary>Nota / dolor</summary>${pain(`ex.${i}.pain`, l?.pain)}${note(`ex.${i}.note`, l?.note)}</details>
-    </div>`;
+    </details>`;
   }).join('');
 }
 
@@ -192,6 +212,8 @@ function itemCard(item, date) {
   else body = stepsBody(item, log);
   return `<section class="card" data-key="${esc(key)}">
     <header><h3>${esc(item.title)}</h3><span class="prog">${progText(item, log)}</span></header>
+    ${['gym', 'run', 'field'].includes(item.type) ? `<button type="button" class="done-all">${log?.confirmed ? 'Confirmada ✓ (volver a aplicar)' : '✓ Terminé la sesión'}</button>
+      ${log?.confirmed ? '<input type="hidden" data-p="confirmed" data-t="bool" value="true">' : ''}` : ''}
     ${badges ? `<div>${badges}</div>` : ''}
     ${item.notes ? `<p class="target"><em>${esc(item.notes)}</em></p>` : ''}
     ${body}
@@ -385,7 +407,15 @@ function showVideo(name, msg = '') {
   });
   if (!dialog.open) dialog.showModal();
 }
-main.addEventListener('click', e => { const b = e.target.closest('.play'); if (b) showVideo(b.dataset.video); });
+main.addEventListener('click', e => {
+  const b = e.target.closest('.play');
+  if (b) { e.preventDefault(); showVideo(b.dataset.video); } // preventDefault: que no abra/cierre el ejercicio
+  if (e.target.matches('.done-all')) {
+    const card = e.target.closest('[data-key]'), key = card.dataset.key;
+    save(key, P.confirmItem(itemByKey(key), serialize(card)));
+    renderDay(key.slice(0, 10));
+  }
+});
 // Cerrar corta la reproducción.
 dialog.addEventListener('close', () => { dialog.innerHTML = ''; });
 

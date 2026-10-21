@@ -127,3 +127,32 @@ test('borrado de datos de prueba', () => {
   assert.deepEqual(P.keysToDelete(logs, '2026-10-21', '2026-10-22', { training: true, videos: false }), ['2026-10-21|_day', '2026-10-22|g1']);
   assert.deepEqual(P.keysToDelete(logs, '0000-01-01', '9999-12-31', { training: false, videos: true }).length, 2);
 });
+
+test('Terminé la sesión y dónde se frenó', () => {
+  const gym = plan.days[1].items[0], run = plan.days[2].items[0];
+  // Sentadilla: cambió kg sin tildar (no cuenta como tocado). Prensa: se frenó en la serie 2.
+  const log = { ex: [{ name: 'Sentadilla', sets: [{ done: false, reps: 8, kg: 50 }, { done: false, reps: 8, kg: 50 }, { done: false, reps: 8, kg: 50 }] },
+    { name: 'Prensa', sets: [{ done: true, reps: 12, kg: 100 }, { done: false, reps: 6, kg: 120 }] }] };
+  const c = P.confirmItem(gym, log);
+  assert.equal(c.confirmed, true);
+  assert.deepEqual(c.ex[0].sets.map(s => [s.done, s.kg]), [[true, 50], [true, 50], [true, 50]]);
+  assert.deepEqual(c.ex[1].sets.map(s => s.done), [true, false]);
+  assert.deepEqual(P.stoppedAt(gym, c), [{ ex: 1, set: 1 }]);
+  // "No lo hice" bloquea el autocompletado.
+  const skip = P.confirmItem(gym, { ex: [{ name: 'Sentadilla', skip: true, sets: [] }] });
+  assert.deepEqual([skip.ex[0].sets.length, skip.ex[1].sets.every(s => s.done)], [0, true]);
+  assert.deepEqual(P.stoppedAt(gym, skip), []);
+  // Sin tocar nada: no hay frenado ni se asume nada.
+  assert.deepEqual(P.stoppedAt(gym, undefined), []);
+
+  const r = P.confirmItem(run, undefined);
+  assert.deepEqual(r.steps, [{ done: true }, { done: true, completed: 8 }]);
+  assert.equal(P.stoppedAt(run, r), null);
+  const frenado = { steps: [{ done: true }, { done: false, completed: 3 }] };
+  assert.deepEqual(P.confirmItem(run, frenado).steps, frenado.steps); // ya tocado: no se completa
+  assert.deepEqual(P.stoppedAt(run, frenado), { step: 1, round: 4 });
+  assert.deepEqual(P.itemProgress(run, frenado), [1 + 3 / 8, 2]);
+
+  const ex = P.buildExport({ ...plan, days: [plan.days[2]] }, { '2026-10-24|r1': r }, '2026-10-01', '2026-10-31');
+  assert.deepEqual([ex.days[0].items[0].confirmed_all, ex.days[0].items[0].stopped_at], [true, null]);
+});
