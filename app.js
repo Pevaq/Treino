@@ -423,5 +423,10 @@ sb.auth.onAuthStateChange((event, session) => {
   if (user) setTimeout(() => pull().then(() => { if (!main.contains(document.activeElement)) route(); flush(); }).catch(syncBadge));
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator) {
+  // Si había una versión vieja controlando la página, recargar apenas toma el control la nueva.
+  const had = navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => had && location.reload());
+  navigator.serviceWorker.register('sw.js');
+}
 syncBadge();
