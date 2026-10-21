@@ -179,3 +179,10 @@ const trotSecs = (steps, mult = 1) => steps.reduce((a, s) =>
   a + (s.repeat ? trotSecs(s.steps, mult * s.repeat) : (s.do ?? '').includes('trote') ? secs(s.time) * mult : 0), 0);
 export const runMinutes = steps => Math.round(trotSecs(steps) / 6) / 10;
 
+
+// Sesiones gym/run/field para el PDF: weeks = 0 → todo el plan; si no, de "from" a from + 7·weeks − 1 inclusive.
+export function printSessions(plan, from, weeks) {
+  const to = weeks ? addDays(from, 7 * weeks - 1) : '9999-12-31';
+  return plan.days.filter(d => !weeks || (d.date >= from && d.date <= to))
+    .flatMap(d => d.items.filter(i => ['gym', 'run', 'field'].includes(i.type)).map(i => ({ date: d.date, ...i })));
+}

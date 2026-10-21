@@ -83,3 +83,9 @@ test('minutos de trote', () => {
   assert.equal(P.runMinutes(plan.days[2].items[0].steps), 8);
   assert.equal(P.runMinutes([{ repeat: 2, steps: [{ repeat: 3, steps: [{ do: 'trote suave', time: '30s' }] }] }]), 3);
 });
+
+test('sesiones del PDF por rango', () => {
+  assert.deepEqual(P.printSessions(plan, '2026-10-01', 0).map(i => i.id), ['g1', 'r1']);
+  assert.deepEqual(P.printSessions(plan, '2026-10-17', 1).map(i => i.id), ['g1']); // 17 → 23 inclusive
+  assert.deepEqual(P.printSessions(plan, '2026-10-25', 1), []);
+});

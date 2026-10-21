@@ -1,5 +1,5 @@
 // Cache para abrir la app sin señal. Subir la versión al cambiar la lista de archivos.
-const C = 'treino-v2';
+const C = 'treino-v3';
 const SHELL = ['./', 'index.html', 'app.js', 'plan.js', 'config.js', 'style.css', 'manifest.json', 'icon.svg', 'icon-192.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(SHELL))); self.skipWaiting(); });

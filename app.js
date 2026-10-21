@@ -343,10 +343,12 @@ async function renderAnalysis() {
 }
 
 // Detalle imprimible de las sesiones gym/run/field; en Android Chrome window.print() permite "Guardar como PDF".
+let printWeeks = 1, printFrom = null;
 function renderPrint() {
+  printFrom ??= P.today() < plan.days[0].date ? plan.days[0].date : P.today();
   const fd = d => `${fmtDate(d, { weekday: 'short' }).replace('.', '')} ${fmtDate(d, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
   const LABEL = { gym: 'Gimnasio', run: 'Trote', field: 'Campo' };
-  const sessions = plan.days.flatMap(d => d.items.filter(i => LABEL[i.type]).map(i => ({ date: d.date, ...i })));
+  const sessions = P.printSessions(plan, printFrom, printWeeks);
   const td = (...cells) => cells.map(c => `<td>${c ?? ''}</td>`).join('') + '<td></td>';
   const small = t => t ? `<br><small>${esc(t)}</small>` : '';
   const side = x => x.per_side ? ' por lado' : '';
@@ -360,9 +362,15 @@ function renderPrint() {
       esc([s.time, s.distance].filter(Boolean).join(' · ')),
       esc([s.intensity, s.pace && `${s.pace}/km`].filter(Boolean).join(' · ')))}</tr>`]);
   main.innerHTML = `<article class="print">
-    <p class="noprint"><button onclick="print()">Imprimir / Guardar PDF</button> <a href="#/plan">Volver</a></p>
-    <h1>${esc(plan.name)}</h1>
-    <p class="target">${esc(fd(plan.days[0].date))} al ${esc(fd(plan.days.at(-1).date))} · ${sessions.length} sesiones</p>
+    <div class="noprint card">
+      <div class="row">
+        <label class="inline">Rango <select id="pweeks">${[[1, '1 semana'], [2, '2 semanas'], [3, '3 semanas'], [0, 'Todo el plan']].map(([v, l]) => `<option value="${v}" ${v === printWeeks ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="inline">Desde <input type="date" id="pfrom" value="${printFrom}" ${printWeeks ? '' : 'disabled'}></label>
+      </div>
+      <button onclick="print()" ${sessions.length ? '' : 'disabled'}>Imprimir / Guardar PDF</button> <a href="#/plan">Volver</a>
+    </div>
+    ${sessions.length ? `<h1>Calendario del ${esc(fd(sessions[0].date))} al ${esc(fd(sessions.at(-1).date))}</h1>
+    <p class="target">Gimnasio, trote y campo · ${sessions.length} sesiones</p>` : '<p class="error">No hay sesiones de gimnasio, trote o campo en ese rango.</p>'}
     ${sessions.map(i => {
       const meta = [i.stage, i.notes, i.type === 'run' && `${P.runMinutes(i.steps)}' de trote`].filter(Boolean).map(esc).join(' · ');
       return `<section class="session">
@@ -374,6 +382,8 @@ function renderPrint() {
         </table></section>`;
     }).join('')}
   </article>`;
+  main.querySelector('#pweeks').onchange = e => { printWeeks = +e.target.value; renderPrint(); };
+  main.querySelector('#pfrom').onchange = e => { if (e.target.value) printFrom = e.target.value; renderPrint(); };
 }
 
 function renderLogin(msg = '') {
