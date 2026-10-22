@@ -3,22 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f6f43">
+  <meta name="theme-color" content="#0F1412">
   <title>Treino</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preload" href="fonts/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
-  <header class="top"><b>Treino</b><span id="sync" aria-live="polite"></span></header>
+  <header class="top"><span class="brand"><img src="icon.svg" alt="" width="28" height="28">Treino</span><span id="sync" aria-live="polite"></span></header>
   <main id="main"><p class="center muted">Cargando…</p></main>
   <dialog id="video"></dialog>
   <nav id="tabs" hidden>
-    <a href="#/">Hoy</a>
-    <a href="#/plan">Rutina</a>
-    <a href="#/analisis">Análisis</a>
+    <a href="#/"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="12" cy="15" r="2"/></svg>Hoy</a>
+    <a href="#/plan"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>Rutina</a>
+    <a href="#/analisis"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg>Análisis</a>
   </nav>
 </body>
 </html>

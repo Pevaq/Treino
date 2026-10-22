@@ -74,7 +74,9 @@ function save(key, data) {
 
 function syncBadge() {
   const n = new Set(queue).size;
-  document.getElementById('sync').textContent = n ? `⟳ ${n} sin subir` : '✓';
+  const el = document.getElementById('sync');
+  el.textContent = n ? `${n} sin subir` : 'Al día';
+  el.dataset.s = n ? 'pend' : 'ok';
 }
 
 addEventListener('online', flush);
@@ -115,7 +117,8 @@ function onEdit(e) {
   save(key, serialize(card));
   const item = itemByKey(key), prog = card.querySelector('.prog');
   if (prog) prog.textContent = progText(item, logs[key]);
-  if (item?.type === 'gym') card.querySelectorAll('.exstat').forEach((el, i) => { el.textContent = exStatus(item.exercises[i], logs[key]?.ex?.[i]); });
+  card.querySelector('.segs')?.replaceWith(...tpl(segs(item, logs[key])));
+  if (item?.type === 'gym') card.querySelectorAll('.exstat').forEach((el, i) => { el.textContent = exStatus(item.exercises[i], logs[key]?.ex?.[i]); el.dataset.s = statKind(el.textContent); });
   if (e.target.matches('textarea')) grow(e.target);
 }
 main.addEventListener('change', onEdit);
@@ -124,6 +127,25 @@ main.addEventListener('input', e => e.target.matches('textarea, input[type=numbe
 const grow = t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
 const itemByKey = key => { const [date, id] = key.split('|'); return P.dayOf(plan, date)?.items.find(i => i.id === id); };
 const progText = (item, log) => { if (!item) return ''; const [d, t] = P.itemProgress(item, log); return `${+d.toFixed(1)}/${t}`; };
+const tpl = html => { const t = document.createElement('template'); t.innerHTML = html; return t.content.childNodes; };
+
+// Íconos de trazo fino (estilo Lucide).
+const svg = d => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const IC = {
+  play: svg('<path d="M7 4.5v15l12-7.5z"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  zap: svg('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
+  prev: svg('<path d="m15 18-6-6 6-6"/>'),
+  next: svg('<path d="m9 18 6-6-6-6"/>'),
+};
+
+// Barra segmentada del gimnasio: un segmento por serie.
+let popKey = null;
+function segs(item, log) {
+  if (item?.type !== 'gym') return '';
+  const [d, t] = P.itemProgress(item, log);
+  return `<div class="segs" aria-hidden="true">${Array.from({ length: t }, (_, i) => `<i style="--f:${Math.min(Math.max(d - i, 0), 1)};--k:${i}"></i>`).join('')}</div>`;
+}
 
 // ---------- Vistas ----------
 
@@ -142,6 +164,8 @@ function exerciseTarget(ex) {
   return [same ? `${sets.length} × ${one(sets[0])}` : sets.map(one).join(' / '), ex.per_side && 'por lado', ex.rest && `desc. ${ex.rest}`]
     .filter(Boolean).map(esc).join(' · ');
 }
+
+const statKind = s => s === '✓' ? 'done' : s === '—' ? 'none' : s === 'no lo hice' ? 'skip' : 'part';
 
 // Estado corto de un ejercicio para la línea compacta.
 function exStatus(ex, l) {
@@ -170,8 +194,8 @@ function gymBody(item, log, date) {
       <summary>
         <span class="exname">${esc(ex.name)}</span>
         <span class="target">${exerciseTarget(ex)}${!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly ? ` · ${esc(kgShown)} kg` : ''}</span>
-        <span class="exstat">${exStatus(ex, l)}</span>
-        ${catalog?.exercises?.[ex.name]?.videos?.length ? `<button type="button" class="play" data-video="${esc(ex.name)}" aria-label="Ver video de ${esc(ex.name)}">▶</button>` : ''}
+        <span class="exstat" data-s="${statKind(exStatus(ex, l))}">${exStatus(ex, l)}</span>
+        ${catalog?.exercises?.[ex.name]?.videos?.length ? `<button type="button" class="play" data-video="${esc(ex.name)}" aria-label="Ver video de ${esc(ex.name)}">${IC.play}</button>` : ''}
       </summary>
       <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">
       ${ex.notes ? `<p class="target"><em>${esc(ex.notes)}</em></p>` : ''}
@@ -183,7 +207,11 @@ function gymBody(item, log, date) {
   }).join('');
 }
 
+// Trote/campo: lista de lectura; tildar pasos queda escondido para cuando no se terminó.
 function stepsBody(item, log) {
+  const read = item.steps.map(s => `<li>${s.repeat
+    ? `<b>${s.repeat} ×</b> ${s.steps.map(x => `${x.repeat ? `${x.repeat} × ` : ''}${stepText(x)}`).join(' + ')}`
+    : stepText(s)}</li>`).join('');
   const steps = item.steps.map((s, i) => {
     const l = log?.steps?.[i];
     if (!s.repeat) return `<li>${chk(`steps.${i}.done`, l?.done, stepText(s))}</li>`;
@@ -193,14 +221,18 @@ function stepsBody(item, log) {
       <label class="inline">Completadas ${num(`steps.${i}.completed`, l?.completed, String(s.repeat), 'short')} de ${s.repeat}</label>
     </li>`;
   }).join('');
-  return `<ul class="steps">${steps}</ul>
-    <div class="row"><label class="inline">Tiempo total ${num('time', log?.time, 'min', 'short')} min</label>${pain('pain', log?.pain, 'Dolor durante')}</div>
+  const stopped = !log?.confirmed && log?.steps?.some(l => l?.done || l?.completed != null);
+  return `<ol class="read">${read}</ol>
+    <details class="stop" ${stopped ? 'open' : ''}><summary>No la terminé / me frené</summary>
+      <p class="target">Tildá lo que hiciste.</p><ul class="steps">${steps}</ul>
+    </details>
+    <div class="row compact"><label class="inline">Tiempo total ${num('time', log?.time, '', 'short')} min</label>${pain('pain', log?.pain, 'Dolor')}</div>
     ${note('note', log?.note)}`;
 }
 
-function itemCard(item, date) {
+function itemCard(item, date, dayStage) {
   const key = `${date}|${item.id}`, log = logs[key];
-  const badges = [item.stage, item.impact && '⚡ impacto', item.competitive && 'competitivo'].filter(Boolean).map(b => `<span class="badge">${esc(b)}</span>`).join('');
+  const badges = [item.stage !== dayStage && esc(item.stage), item.impact && `${IC.zap}impacto`, item.competitive && 'competitivo'].filter(Boolean).map(b => `<span class="badge">${b}</span>`).join('');
   let body;
   if (item.type === 'check') body = chk('done', log?.done, 'Hecho');
   else if (item.type === 'match') body = `
@@ -210,21 +242,22 @@ function itemCard(item, date) {
     ${note('note', log?.note)}`;
   else if (item.type === 'gym') body = gymBody(item, log, date);
   else body = stepsBody(item, log);
-  return `<section class="card" data-key="${esc(key)}">
-    <header><h3>${esc(item.title)}</h3><span class="prog">${progText(item, log)}</span></header>
-    ${['gym', 'run', 'field'].includes(item.type) ? `<button type="button" class="done-all">${log?.confirmed ? 'Confirmada ✓ (volver a aplicar)' : '✓ Terminé la sesión'}</button>
-      ${log?.confirmed ? '<input type="hidden" data-p="confirmed" data-t="bool" value="true">' : ''}` : ''}
+  return `<section class="card t-${esc(item.type)}" data-key="${esc(key)}">
+    <header><h3>${esc(item.title)}</h3>${['run', 'field'].includes(item.type) ? '' : `<span class="prog">${progText(item, log)}</span>`}</header>
+    ${segs(item, log).replace('class="segs"', `class="segs${popKey === key ? ' pop' : ''}"`)}
     ${badges ? `<div>${badges}</div>` : ''}
     ${item.notes ? `<p class="target"><em>${esc(item.notes)}</em></p>` : ''}
     ${body}
+    ${['gym', 'run', 'field'].includes(item.type) ? `<button type="button" class="done-all${log?.confirmed ? ' on' : ''}">${log?.confirmed ? 'Confirmada ✓ (volver a aplicar)' : '✓ Terminé la sesión'}</button>
+      ${log?.confirmed ? '<input type="hidden" data-p="confirmed" data-t="bool" value="true">' : ''}` : ''}
   </section>`;
 }
 
 function morningCard(date) {
   const key = `${date}|_morning`, m = logs[key] ?? {};
   const done = m.skipped || (m.swelling && m.pain != null && m.trend);
-  return `<section class="card morning ${done ? 'ok' : ''}" data-key="${esc(key)}">
-    <header><h3>☀️ Chequeo de la mañana</h3><span class="prog">${done ? '✓' : 'pendiente'}</span></header>
+  return `<section class="card t-morning morning ${done ? 'ok' : ''}" data-key="${esc(key)}">
+    <header><h3>${IC.sun}Chequeo de la mañana</h3><span class="prog">${done ? '✓' : 'pendiente'}</span></header>
     <p class="target">Después del impacto de ayer. Prueba: ${esc(plan.rules?.morning_check ?? 'bajada lenta de escalón')}</p>
     <p class="lbl">¿Hinchazón?</p>${radios(key, 'swelling', m.swelling, [['no', 'No'], ['si', 'Sí']])}
     <p class="lbl">Dolor en la prueba</p>
@@ -249,22 +282,28 @@ function renderDay(date) {
   const day = P.dayOf(plan, date);
   const next = plan.days.find(d => d.date > date);
   const dl = logs[`${date}|_day`] ?? {};
+  const stage = day?.items.find(i => i.stage)?.stage;
   main.innerHTML = `
     <nav class="daynav">
-      <a href="#/d/${P.addDays(date, -1)}" aria-label="Día anterior">‹</a>
-      <div><b>${isToday ? 'Hoy' : esc(fmtDate(date, { weekday: 'long' }))}</b><small>${esc(fmtDate(date, { day: 'numeric', month: 'long', year: 'numeric' }))}</small></div>
-      <a href="#/d/${P.addDays(date, 1)}" aria-label="Día siguiente">›</a>
+      <a href="#/d/${P.addDays(date, -1)}" aria-label="Día anterior">${IC.prev}</a>
+      <div class="score">
+        <small>${isToday ? 'Hoy' : esc(fmtDate(date, { month: 'long', year: 'numeric' }))}</small>
+        <b>${esc(fmtDate(date, { weekday: 'short' }).replace('.', ''))} ${esc(fmtDate(date, { day: '2-digit', month: '2-digit' }))}</b>
+        ${stage ? `<span class="chip">${esc(stage)}</span>` : ''}
+      </div>
+      <a href="#/d/${P.addDays(date, 1)}" aria-label="Día siguiente">${IC.next}</a>
     </nav>
     ${!isToday ? `<p class="center"><a href="#/">Volver a hoy</a></p>` : changesCard()}
     ${P.morningRequired(plan, date) ? morningCard(date) : ''}
-    ${day ? day.items.map(i => itemCard(i, date)).join('') : `<section class="card center"><h3>Descanso</h3>
+    ${day ? day.items.map(i => itemCard(i, date, stage)).join('') : `<section class="card center"><h3>Descanso</h3>
       ${next ? `<p>Próximo: <a href="#/d/${next.date}">${esc(fmtDate(next.date))}</a> · ${next.items.map(i => esc(i.title)).join(', ')}</p>` : '<p>No hay más días en la rutina.</p>'}</section>`}
-    ${day ? `<section class="card" data-key="${esc(date)}|_day">
+    ${day ? `<section class="card t-day" data-key="${esc(date)}|_day">
       <header><h3>Cierre del día</h3></header>
       ${radios(date, 'status', dl.status, [['hecho', 'Hecho'], ['parcial', 'Parcial'], ['no hecho', 'No hecho']])}
       ${note('note', dl.note, 'Cómo me sentí, qué cambié…')}
     </section>` : ''}`;
   main.querySelectorAll('textarea').forEach(grow);
+  popKey = null;
 }
 
 function renderPlan(msg = '') {
@@ -276,8 +315,8 @@ function renderPlan(msg = '') {
     const mMissing = d.items.some(i => i.impact) && P.addDays(d.date, 1) <= t && !logs[`${P.addDays(d.date, 1)}|_morning`];
     return `<a class="dayrow ${d.date === t ? 'today' : ''} ${d.date < t ? 'past' : ''}" href="#/d/${d.date}" ${d.date === t ? 'id="today"' : ''}>
       <span class="date">${esc(fmtDate(d.date, { weekday: 'short', day: 'numeric', month: 'short' }))}</span>
-      <span class="titles">${d.items.map(i => esc(i.title)).join(' · ')}${mMissing ? ' <span class="warn" title="Falta el chequeo de la mañana siguiente">☀️?</span>' : ''}</span>
-      <span class="pct">${status ? esc(status) : d.date <= t ? pct + '%' : ''}</span>
+      <span class="titles">${d.items.map(i => esc(i.title)).join(' · ')}${mMissing ? ' <span class="badge pend">chequeo pendiente</span>' : ''}</span>
+      <span class="pct${status === 'hecho' || (!status && pct === 100) ? ' full' : status === 'parcial' ? ' part' : ''}">${status ? esc(status) : d.date <= t ? pct + '%' : ''}</span>
     </a>`;
   }).join('') : '';
   main.innerHTML = `
@@ -424,6 +463,7 @@ main.addEventListener('click', e => {
   if (e.target.matches('.done-all')) {
     const card = e.target.closest('[data-key]'), key = card.dataset.key;
     save(key, P.confirmItem(itemByKey(key), serialize(card)));
+    popKey = key;
     renderDay(key.slice(0, 10));
   }
 });
@@ -449,7 +489,7 @@ async function renderAnalysis() {
   const pct = r => Math.round(100 * r.done / r.planned);
   main.innerHTML = `
     <section class="card"><header><h3>Dolor</h3></header>
-      <p class="target">⚡ = día con impacto · punto rojo = hinchazón a la mañana · línea punteada = máximo permitido (${plan.rules?.max_pain ?? 3})</p>
+      <p class="target">▲ = día con impacto · punto rojo = hinchazón a la mañana · línea punteada = máximo permitido (${plan.rules?.max_pain ?? 3})</p>
       ${pain.length ? '<div class="chart"><canvas id="c-pain"></canvas></div>' : '<p>Todavía no hay datos.</p>'}
     </section>
     <section class="card"><header><h3>Cumplimiento por semana</h3></header>
@@ -463,18 +503,19 @@ async function renderAnalysis() {
   try { ({ default: Chart } = await import('https://cdn.jsdelivr.net/npm/chart.js@4.4.4/auto/+esm')); }
   catch { return main.insertAdjacentHTML('afterbegin', '<p class="error">No se pudieron cargar los gráficos (sin conexión).</p>'); }
   const css = getComputedStyle(document.documentElement);
-  const fg = css.getPropertyValue('--muted').trim();
+  const fg = css.getPropertyValue('--muted').trim(), tok = n => css.getPropertyValue(n).trim();
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   Chart.defaults.color = fg;
   Chart.defaults.borderColor = css.getPropertyValue('--line').trim();
   const max = plan.rules?.max_pain ?? 3;
   if (pain.length) new Chart(main.querySelector('#c-pain'), {
     type: 'line',
     data: {
-      labels: pain.map(r => (r.impact ? '⚡' : '') + fmtDate(r.date, { day: 'numeric', month: 'numeric' })),
+      labels: pain.map(r => (r.impact ? '▲' : '') + fmtDate(r.date, { day: 'numeric', month: 'numeric' })),
       datasets: [
-        { label: 'Durante', data: pain.map(r => r.during), borderColor: '#2a7de1', backgroundColor: '#2a7de1', spanGaps: true },
-        { label: 'Mañana siguiente', data: pain.map(r => r.morning), borderColor: '#e0a100', spanGaps: true,
-          pointBackgroundColor: pain.map(r => r.swelling ? '#d93025' : '#e0a100'), pointRadius: pain.map(r => r.swelling ? 6 : 3) },
+        { label: 'Durante', data: pain.map(r => r.during), borderColor: tok('--info'), backgroundColor: tok('--info'), spanGaps: true },
+        { label: 'Mañana siguiente', data: pain.map(r => r.morning), borderColor: tok('--warn'), spanGaps: true,
+          pointBackgroundColor: pain.map(r => r.swelling ? tok('--danger') : tok('--warn')), pointRadius: pain.map(r => r.swelling ? 6 : 3) },
         { label: 'Máximo', data: pain.map(() => max), borderColor: fg, borderDash: [4, 4], pointRadius: 0 },
       ],
     },
@@ -482,7 +523,7 @@ async function renderAnalysis() {
   });
   if (ad.week.length) new Chart(main.querySelector('#c-week'), {
     type: 'bar',
-    data: { labels: ad.week.map(r => fmtDate(r.key, { day: 'numeric', month: 'short' })), datasets: [{ label: '% hecho', data: ad.week.map(pct), backgroundColor: '#2a9d5c' }] },
+    data: { labels: ad.week.map(r => fmtDate(r.key, { day: 'numeric', month: 'short' })), datasets: [{ label: '% hecho', data: ad.week.map(pct), backgroundColor: tok('--accent'), borderRadius: 4 }] },
     options: { maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } }, plugins: { legend: { display: false } } },
   });
 }
@@ -512,8 +553,9 @@ function renderPrint() {
         <label class="inline">Rango <select id="pweeks">${[[1, '1 semana'], [2, '2 semanas'], [3, '3 semanas'], [0, 'Todo el plan']].map(([v, l]) => `<option value="${v}" ${v === printWeeks ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="inline">Desde <input type="date" id="pfrom" value="${printFrom}" ${printWeeks ? '' : 'disabled'}></label>
       </div>
-      <button onclick="print()" ${sessions.length ? '' : 'disabled'}>Imprimir / Guardar PDF</button> <a href="#/plan">Volver</a>
+      <div class="actions"><button onclick="print()" ${sessions.length ? '' : 'disabled'}>Imprimir / Guardar PDF</button><a class="button ghost" href="#/plan">Volver</a></div>
     </div>
+    <div class="sheet">
     ${sessions.length ? `<h1>Calendario del ${esc(fd(sessions[0].date))} al ${esc(fd(sessions.at(-1).date))}</h1>
     <p class="target">Gimnasio, trote y campo · ${sessions.length} sesiones</p>` : '<p class="error">No hay sesiones de gimnasio, trote o campo en ese rango.</p>'}
     ${sessions.map(i => {
@@ -521,11 +563,12 @@ function renderPrint() {
       return `<section class="session">
         <h2>${LABEL[i.type]} · ${esc(fd(i.date))}${i.title.toLowerCase() !== LABEL[i.type].toLowerCase() ? ` — ${esc(i.title)}` : ''}</h2>
         ${meta ? `<small>${meta}</small>` : ''}
-        <table>${i.type === 'gym'
+        <div class="tablewrap"><table>${i.type === 'gym'
           ? `<tr><th>Ejercicio</th><th>Series</th><th>Reps/tiempo</th><th>Peso (kg)</th><th>Pausa</th><th class="obs">Observaciones</th></tr>${gymRows(i.exercises).join('')}`
           : `<tr><th>Trabajo</th><th>Series × reps</th><th>Tiempo/distancia</th><th>Intensidad</th><th class="obs">Observaciones</th></tr>${stepRows(i.steps).join('')}`}
-        </table></section>`;
+        </table></div></section>`;
     }).join('')}
+    </div>
   </article>`;
   main.querySelector('#pweeks').onchange = e => { printWeeks = +e.target.value; renderPrint(); };
   main.querySelector('#pfrom').onchange = e => { if (e.target.value) printFrom = e.target.value; renderPrint(); };
