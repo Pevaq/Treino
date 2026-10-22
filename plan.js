@@ -3,6 +3,8 @@
 
 export const TYPES = ['check', 'match', 'gym', 'run', 'field'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// Quién armó la rutina. El agente nocturno solo replanifica "claude" (o sin source) y nunca toca items con "by": "manual".
+export const SOURCES = ['claude', 'manual', 'ia'];
 
 export const today = () => new Date().toLocaleDateString('sv-SE');
 
@@ -19,6 +21,7 @@ export function validatePlan(p) {
   if (!p || typeof p !== 'object') return ['El archivo no es un objeto JSON'];
   if (p.version !== 1) err.push('"version" tiene que ser 1');
   if (typeof p.name !== 'string' || !p.name) err.push('Falta "name"');
+  if (p.source != null && !SOURCES.includes(p.source)) err.push(`"source" tiene que ser ${SOURCES.join(', ')}`);
   if (p.replanned_through != null && (!DATE.test(p.replanned_through) || isNaN(new Date(p.replanned_through)))) err.push('"replanned_through" tiene que ser YYYY-MM-DD');
   if (p.changelog != null && (!Array.isArray(p.changelog) || p.changelog.some(c => isNaN(Date.parse(c?.at)) || typeof c?.summary !== 'string')))
     err.push('"changelog" tiene que ser una lista de { at: fecha ISO, by, summary: texto }');
@@ -95,12 +98,12 @@ export function itemProgress(item, log) {
 
 const frac = (item, log) => { const [d, t] = itemProgress(item, log); return t ? d / t : 0; };
 
-// Último kg registrado de un ejercicio (por nombre) antes de una fecha.
-export function lastWeight(logs, name, before) {
+// Último kg registrado de un ejercicio antes de una fecha. x = { ex, name }: por id del catálogo si ambos lo tienen, si no por nombre.
+export function lastWeight(logs, x, before) {
   const keys = Object.keys(logs).filter(k => k < before + '|').sort().reverse();
   for (const k of keys) {
     for (const ex of logs[k]?.ex ?? []) {
-      if (ex?.name !== name) continue;
+      if (x.ex && ex?.ex ? ex.ex !== x.ex : ex?.name !== x.name) continue;
       const kg = (ex.sets ?? []).map(s => s?.kg).filter(v => v != null).at(-1);
       if (kg != null) return kg;
     }
@@ -160,8 +163,9 @@ export function buildExport(plan, logs, from, to, planId = null) {
       const k = `${date}|${i.id}`;
       inPlan.add(k);
       const [done, total] = itemProgress(i, logs[k]);
+      const exIds = i.type === 'gym' ? i.exercises.map(e => e.ex ?? null) : i.steps?.map(s => s.repeat ? s.steps.map(x => x.ex ?? null) : s.ex ?? null);
       return {
-        id: i.id, type: i.type, title: i.title, stage: st[i.id], progress: `${+done.toFixed(2)}/${total}`, frac: total ? done / total : 0,
+        id: i.id, type: i.type, title: i.title, stage: st[i.id], ...(exIds?.flat().some(Boolean) ? { ex: exIds } : {}), progress: `${+done.toFixed(2)}/${total}`, frac: total ? done / total : 0,
         confirmed_all: !!logs[k]?.confirmed && done === total, stopped_at: stoppedAt(i, logs[k]), log: logs[k] ?? null,
       };
     });
@@ -199,28 +203,41 @@ export function printSessions(plan, from, weeks) {
     .flatMap(d => d.items.filter(i => ['gym', 'run', 'field'].includes(i.type)).map(i => ({ date: d.date, ...i })));
 }
 
-// ---------- Catálogo de videos ----------
-// Los rechazos se guardan como logs "fecha|_video:<id>" para que funcionen sin señal y salgan en el export.
+// ---------- Catálogo compartido (v2) ----------
+// exercises: { <id>: { name, kind: gym|run|field, group, defaults, cue, videos } }. En la rutina, ejercicios (gym) y pasos
+// (run/field) llevan "ex" opcional; sin ex (o con uno desconocido) se busca por nombre exacto, sin distinguir mayúsculas.
+// Los rechazos de videos se guardan como logs "fecha|_video:<id>" para que funcionen sin señal y salgan en el export.
 
-const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const norm = s => String(s ?? '').trim().toLowerCase();
 
-export function validateCatalog(c) {
-  const err = [];
-  if (!c || typeof c !== 'object') return ['El archivo no es un objeto JSON'];
-  if (c.version !== 1) err.push('"version" tiene que ser 1');
-  if (!c.exercises || typeof c.exercises !== 'object' || Array.isArray(c.exercises)) return [...err, '"exercises" tiene que ser un objeto'];
-  for (const [name, e] of Object.entries(c.exercises)) {
-    if (!Array.isArray(e?.videos)) { err.push(`${name}: falta "videos"`); continue; }
-    e.videos.forEach((v, i) => VIDEO_ID.test(v?.id) || err.push(`${name} video ${i + 1}: id inválido (${v?.id})`));
-  }
-  return err.slice(0, 20);
+export function exId(catalog, x) {
+  const all = catalog?.exercises ?? {};
+  if (x?.ex && all[x.ex]) return x.ex;
+  const n = norm(x?.name ?? x?.do);
+  return n ? Object.keys(all).find(k => norm(all[k].name) === n) ?? null : null;
 }
+
+// Copia de la rutina con "ex" completado donde falta y el nombre coincide con el catálogo.
+export function fillEx(plan, catalog) {
+  const p = structuredClone(plan);
+  const fill = x => { if (!x.ex) { const id = exId(catalog, x); if (id) x.ex = id; } };
+  const steps = list => list?.forEach(s => s.repeat ? steps(s.steps) : fill(s));
+  p.days?.forEach(d => d.items?.forEach(i => { i.exercises?.forEach(fill); steps(i.steps); }));
+  return p;
+}
+
+// Una línea por ejercicio para el prompt de "Generar con IA".
+export const catalogLines = catalog => Object.entries(catalog?.exercises ?? {}).map(([id, e]) =>
+  `- ${id} · ${e.name} (${[e.kind, ...Object.entries(e.defaults ?? {}).map(([k, v]) => v === true ? k : `${k} ${v}`)].join(', ')})`).join('\n');
+
+// El JSON de una respuesta de IA, aunque venga envuelto en ```json o con texto alrededor.
+export const extractJson = text => { const a = text.indexOf('{'), b = text.lastIndexOf('}'); return a >= 0 && b > a ? text.slice(a, b + 1) : text; };
 
 export const rejectedVideos = logs => new Set(Object.keys(logs).filter(k => k.includes('|_video:')).map(k => k.split('|_video:')[1]));
 
 // Primer video no rechazado; si no queda ninguno, el último con exhausted = true.
-export function pickVideo(catalog, name, rejected) {
-  const vids = catalog?.exercises?.[name]?.videos ?? [];
+export function pickVideo(catalog, id, rejected) {
+  const vids = catalog?.exercises?.[id]?.videos ?? [];
   if (!vids.length) return null;
   const v = vids.find(v => !rejected.has(v.id));
   return v ? { video: v, exhausted: false } : { video: vids.at(-1), exhausted: true };
@@ -269,3 +286,35 @@ export function stoppedAt(item, log) {
 export const unseenChanges = (plan, seen) => (plan.changelog ?? [])
   .filter(c => !seen || Date.parse(c.at) > Date.parse(seen))
   .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+
+// ---------- Crear rutina a mano ----------
+
+// start + los días de la semana elegidos (0 = lunes) durante N semanas; sin días elegidos, solo start.
+export function repeatDates(start, weekdays, weeks) {
+  if (!weekdays.length) return [start];
+  const n = 7 * Math.min(Math.max(weeks | 0, 1), 52);
+  return Array.from({ length: n }, (_, i) => addDays(start, i)).filter(d => weekdays.includes((new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7));
+}
+
+// Saca campos vacíos ('' / null / false) para que el item quede como lo escribiría Claude.
+export const cleanItem = o => Array.isArray(o) ? o.map(cleanItem) : o && typeof o === 'object'
+  ? Object.fromEntries(Object.entries(o).filter(([, v]) => v !== '' && v != null && v !== false).map(([k, v]) => [k, cleanItem(v)]))
+  : o;
+
+// Nueva versión de la rutina con `item` en cada fecha. mode "replace" saca lo que había esos días, salvo los items con registros.
+// Ids "<type>-<fecha>" con sufijo -2, -3… si ya existe en la rutina o en los registros (para no heredar logs viejos).
+export function mergeItems(plan, dates, item, mode, logs, name = 'Mi rutina') {
+  const p = plan ? structuredClone(plan) : { version: 1, name, source: 'manual', days: [] };
+  const used = new Set([...p.days.flatMap(d => d.items.map(i => i.id)), ...Object.keys(logs).map(k => k.split('|')[1])]);
+  for (const date of dates) {
+    let day = p.days.find(d => d.date === date);
+    if (!day) p.days.push(day = { date, items: [] });
+    if (mode === 'replace') day.items = day.items.filter(i => logs[`${date}|${i.id}`]);
+    let id = `${item.type}-${date}`;
+    for (let n = 2; used.has(id); n++) id = `${item.type}-${date}-${n}`;
+    used.add(id);
+    day.items.push({ id, ...structuredClone(item) });
+  }
+  p.days.sort((a, b) => a.date.localeCompare(b.date));
+  return p;
+}

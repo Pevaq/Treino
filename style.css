@@ -84,7 +84,7 @@ p.ok { color: var(--accent); }
 
 /* Formularios */
 input, select, textarea, button { font: inherit; color: inherit; }
-input[type=number], input[type=email], input[type=password], input[type=date], input:not([type]), select, textarea {
+input[type=number], input[type=email], input[type=password], input[type=date], input[type=text], input[type=search], input:not([type]), select, textarea {
   background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 44px;
   transition: border-color .15s;
 }
@@ -274,3 +274,36 @@ a.button.ghost { background: none; border-color: var(--muted); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Header: ayuda */
+.hdr { display: flex; align-items: center; gap: 4px; }
+.helpbtn { display: grid; place-items: center; width: 44px; height: 44px; margin: -10px -12px -10px 0; color: var(--muted); }
+.helpbtn .ic { width: 22px; height: 22px; }
+h2.helptitle { font-family: var(--cond); font-size: 30px; font-weight: 700; text-transform: uppercase; margin: 4px 0 14px; }
+details.help > summary { list-style: none; padding: 0; color: var(--text); }
+details.help > summary::-webkit-details-marker { display: none; }
+details.help > summary h3 { margin: 0; display: flex; justify-content: space-between; align-items: center; }
+details.help > summary h3::after { content: '+'; color: var(--muted); font-size: 24px; }
+details.help[open] > summary h3::after { content: '–'; }
+details.help ul { padding-left: 20px; margin: 10px 0; }
+details.help li { margin: 4px 0; }
+details.help p { margin: 10px 0; }
+
+/* Crear rutina */
+input.wide, input[type=search] { width: 100%; min-width: 0; }
+.row label.inline:has(input.wide) { flex: 1 1 180px; }
+.drafted { list-style: none; padding: 0; margin: 8px 0; counter-reset: d; }
+.drafted > li { border-top: 1px solid var(--line); padding: 10px 0; }
+.drafted ol { list-style: none; padding: 0 0 0 12px; margin: 4px 0; border-left: 2px solid var(--mint); }
+.drow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.drow b { min-width: 0; overflow-wrap: anywhere; }
+.mv { display: flex; flex: none; }
+button.icon { background: none; color: var(--muted); width: 40px; min-height: 40px; padding: 0; margin: 0; }
+.block.on { background: var(--surface-2); border-radius: 8px; padding: 10px 8px; }
+button.ghostbtn { background: none; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); width: 100%; }
+.picker { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 4px; }
+.picker .row { gap: 8px; flex-wrap: nowrap; }
+.picker select { flex: none; max-width: 40%; }
+#cres { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
+button.pick { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); margin: 0; padding: 8px 12px; text-align: left; font-weight: 500; }
+button.pick small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }

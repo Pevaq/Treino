@@ -27,7 +27,7 @@ async function pull() {
   }
   const { data: pl, error } = await sb.from('plans').select('id,data').order('created_at', { ascending: false }).limit(1);
   if (error) throw error;
-  const { data: cat, error: e2 } = await sb.from('catalogs').select('data').limit(1);
+  const { data: cat, error: e2 } = await sb.from('exercise_catalog').select('data').limit(1);
   if (e2) throw e2;
   catalog = cat[0]?.data ?? null;
   ls.set('catalog', catalog);
@@ -177,7 +177,8 @@ function exStatus(ex, l) {
 function gymBody(item, log, date) {
   return item.exercises.map((ex, i) => {
     const l = log?.ex?.[i];
-    const last = P.lastWeight(logs, ex.name, date);
+    const id = P.exId(catalog, ex);
+    const last = P.lastWeight(logs, { ex: id, name: ex.name }, date);
     const kgShown = l?.sets?.find(s => s?.kg != null)?.kg ?? ex.weight ?? last;
     const rows = P.setsOf(ex).map((s, j) => {
       const sl = l?.sets?.[j];
@@ -195,9 +196,9 @@ function gymBody(item, log, date) {
         <span class="exname">${esc(ex.name)}</span>
         <span class="target">${exerciseTarget(ex)}${!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly ? ` · ${esc(kgShown)} kg` : ''}</span>
         <span class="exstat" data-s="${statKind(exStatus(ex, l))}">${exStatus(ex, l)}</span>
-        ${catalog?.exercises?.[ex.name]?.videos?.length ? `<button type="button" class="play" data-video="${esc(ex.name)}" aria-label="Ver video de ${esc(ex.name)}">${IC.play}</button>` : ''}
+        ${catalog?.exercises?.[id]?.videos?.length ? `<button type="button" class="play" data-video="${esc(id)}" aria-label="Ver video de ${esc(ex.name)}">${IC.play}</button>` : ''}
       </summary>
-      <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">
+      <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
       ${ex.notes ? `<p class="target"><em>${esc(ex.notes)}</em></p>` : ''}
       ${timedOnly ? '' : `<label class="inline">kg para todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
       ${rows}
@@ -330,17 +331,17 @@ function renderPlan(msg = '') {
         </div>
         <button id="export">Exportar lo hecho (copiar + descargar)</button>
         <a class="button" href="#/imprimir">PDF para el profesional</a>` : ''}
+      <div class="actions"><a class="button" href="#/crear">Crear rutina</a></div>
+      <details><summary>Generar con IA</summary>
+        <p class="target">Copiá el prompt, completá tus datos y pegalo en ChatGPT, Gemini o Claude. Lo que te devuelva pegalo en <b>Cargar rutina nueva</b>.</p>
+        <button type="button" id="prompt">Copiar prompt</button>
+        <textarea id="ptext" rows="6" hidden readonly aria-label="Prompt"></textarea>
+      </details>
       <details ${plan ? '' : 'open'}><summary>Cargar rutina nueva</summary>
-        <p class="target">Elegí el archivo .json o pegá su contenido. Reemplaza la rutina vigente; lo ya registrado se conserva.</p>
+        <p class="target">Elegí el archivo .json o pegá su contenido (sirve la respuesta entera de la IA). Reemplaza la rutina vigente; lo ya registrado se conserva.</p>
         <input type="file" id="file" accept=".json,application/json">
         <textarea id="paste" rows="4" placeholder='{"version":1, ...}'></textarea>
         <button id="load">Cargar</button>
-      </details>
-      <details><summary>Catálogo de videos${catalog ? ` (${Object.keys(catalog.exercises).length} ejercicios)` : ''}</summary>
-        <p class="target">Archivo ejercicios.json o pegá su contenido. <b>Reemplaza el catálogo actual entero, incluidos los videos que agregó Claude de noche.</b> Los videos rechazados se siguen salteando.</p>
-        <input type="file" id="cfile" accept=".json,application/json">
-        <textarea id="cpaste" rows="4" placeholder='{"version":1, "exercises": ...}'></textarea>
-        <button id="cload">Cargar catálogo</button>
       </details>
     </section>
     ${rows ? `<section class="card list">${rows}</section>` : ''}
@@ -359,8 +360,7 @@ function renderPlan(msg = '') {
   main.querySelector('#today')?.scrollIntoView({ block: 'center' });
   main.querySelector('#file').onchange = async e => { main.querySelector('#paste').value = await e.target.files[0]?.text() ?? ''; };
   main.querySelector('#load').onclick = loadPlan;
-  main.querySelector('#cfile').onchange = async e => { main.querySelector('#cpaste').value = await e.target.files[0]?.text() ?? ''; };
-  main.querySelector('#cload').onclick = loadCatalog;
+  main.querySelector('#prompt').onclick = copyPrompt;
   main.querySelector('#ddel').onclick = deleteData;
   main.querySelector('#logout').onclick = async () => {
     const n = new Set(queue).size;
@@ -376,18 +376,38 @@ function renderPlan(msg = '') {
 
 async function loadPlan() {
   let p;
-  try { p = JSON.parse(main.querySelector('#paste').value); } catch (e) { return renderPlan(`<p class="error">JSON inválido: ${esc(e.message)}</p>`); }
+  try { p = JSON.parse(P.extractJson(main.querySelector('#paste').value)); } catch (e) { return renderPlan(`<p class="error">JSON inválido: ${esc(e.message)}</p>`); }
   const err = P.validatePlan(p);
   if (err.length) return renderPlan(`<p class="error">La rutina tiene errores:<br>${err.map(esc).join('<br>')}</p>`);
   if (plan && !confirm(`¿Reemplazar "${plan.name}" por "${p.name}"?`)) return;
-  const { data: row, error } = await sb.from('plans').insert({ user_id: user.id, name: p.name, data: p }).select('id').single();
+  p = { source: 'ia', ...P.fillEx(p, catalog) };
+  const error = await savePlan(p);
   if (error) return renderPlan(`<p class="error">No se pudo guardar (¿sin conexión?): ${esc(error.message)}</p>`);
+  const orphan = P.buildExport(plan, logs, '0000-01-01', '9999-12-31').fuera_del_plan.length;
+  renderPlan(`<p class="ok">Rutina "${esc(p.name)}" cargada.${orphan ? ` Hay ${orphan} registros de items que no están en esta rutina: se conservan y salen en el export como "fuera_del_plan".` : ''}</p>`);
+}
+
+// Cada cambio de rutina es una versión nueva en plans; la vigente es la última.
+async function savePlan(p) {
+  const { data: row, error } = await sb.from('plans').insert({ user_id: user.id, name: p.name, data: p }).select('id').single();
+  if (error) return error;
   plan = p;
   planId = row.id;
   ls.set('plan', plan);
   ls.set('planId', planId);
-  const orphan = P.buildExport(plan, logs, '0000-01-01', '9999-12-31').fuera_del_plan.length;
-  renderPlan(`<p class="ok">Rutina "${esc(p.name)}" cargada.${orphan ? ` Hay ${orphan} registros de items que no están en esta rutina: se conservan y salen en el export como "fuera_del_plan".` : ''}</p>`);
+}
+
+// Textos que se editan aparte (los cachea el service worker).
+const texts = {};
+const text = async f => texts[f] ??= await (await fetch(f)).text();
+
+async function copyPrompt() {
+  const t = main.querySelector('#ptext');
+  try { t.value = (await text('prompt-rutina.md')).replace('{{CATALOGO}}', P.catalogLines(catalog)); } catch { t.value = 'No se pudo cargar el prompt (¿sin conexión?).'; }
+  t.hidden = false;
+  grow(t);
+  try { await navigator.clipboard.writeText(t.value); main.querySelector('#prompt').textContent = 'Copiado ✓'; }
+  catch { t.select(); main.querySelector('#prompt').textContent = 'Copialo del cuadro'; }
 }
 
 async function deleteData() {
@@ -411,30 +431,18 @@ async function deleteData() {
   renderPlan(`<p class="ok">Borrados ${Math.max(count ?? 0, gone.size)} registros.</p>`);
 }
 
-async function loadCatalog() {
-  let c;
-  try { c = JSON.parse(main.querySelector('#cpaste').value); } catch (e) { return renderPlan(`<p class="error">JSON inválido: ${esc(e.message)}</p>`); }
-  const err = P.validateCatalog(c);
-  if (err.length) return renderPlan(`<p class="error">El catálogo tiene errores:<br>${err.map(esc).join('<br>')}</p>`);
-  if (catalog && !confirm('Esto reemplaza el catálogo actual, incluidos los videos agregados por Claude. ¿Seguir?')) return;
-  const { error } = await sb.from('catalogs').upsert({ user_id: user.id, data: c, updated_at: new Date().toISOString() });
-  if (error) return renderPlan(`<p class="error">No se pudo guardar (¿sin conexión?): ${esc(error.message)}</p>`);
-  catalog = c;
-  ls.set('catalog', catalog);
-  renderPlan(`<p class="ok">Catálogo cargado: ${Object.keys(c.exercises).length} ejercicios.</p>`);
-}
 
 // ---------- Video de demostración ----------
 
 const REASONS = ['no se ve bien', 'otro ejercicio', 'prefiero en español', 'no me sirve'];
 const dialog = document.getElementById('video');
 
-function showVideo(name, msg = '') {
-  const pick = P.pickVideo(catalog, name, P.rejectedVideos(logs));
+function showVideo(id, msg = '') {
+  const pick = P.pickVideo(catalog, id, P.rejectedVideos(logs));
   if (!pick) return;
-  const { video: v, exhausted } = pick;
+  const { video: v, exhausted } = pick, e = catalog.exercises[id], name = e.name;
   dialog.innerHTML = `<form method="dialog" class="vhead"><h3>${esc(name)}</h3><button aria-label="Cerrar">✕</button></form>
-    ${catalog.exercises[name].cue ? `<p>${esc(catalog.exercises[name].cue)}</p>` : ''}
+    ${e.cue ? `<p>${esc(e.cue)}</p>` : ''}
     ${msg}
     <div class="vframe"><iframe src="https://www.youtube-nocookie.com/embed/${v.id}" title="${esc(v.title ?? name)}" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
     <p class="target">${esc([v.title, v.channel].filter(Boolean).join(' · '))} · <a href="https://www.youtube.com/shorts/${v.id}" target="_blank" rel="noopener">Abrir en YouTube</a></p>
@@ -447,12 +455,12 @@ function showVideo(name, msg = '') {
     </details>`}`;
   dialog.querySelector('#vnext')?.addEventListener('click', () => {
     save(`${P.today()}|_video:${v.id}`, {
-      exercise: name, video_id: v.id,
+      exercise: name, ex: id, video_id: v.id,
       reason: dialog.querySelector('input[name=reason]:checked')?.value ?? null,
       note: dialog.querySelector('#vnote').value || null,
       created_at: new Date().toISOString(),
     });
-    showVideo(name);
+    showVideo(id);
   });
   if (!dialog.open) dialog.showModal();
 }
@@ -574,6 +582,192 @@ function renderPrint() {
   main.querySelector('#pfrom').onchange = e => { if (e.target.value) printFrom = e.target.value; renderPrint(); };
 }
 
+// ---------- Ayuda ----------
+// Markdown mínimo de ayuda.md: cada "## " es una sección desplegable; listas (con un nivel de sangría), **negrita** y *cursiva*.
+
+function md(src) {
+  const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<em>$1</em>');
+  let html = '', depth = 0;
+  const closeLists = (to = 0) => { while (depth > to) { html += '</li></ul>'; depth--; } };
+  for (const line of src.split(/\r?\n/)) {
+    const li = /^(\s*)- (.*)$/.exec(line);
+    if (li) {
+      const d = li[1].length >= 2 ? 2 : 1;
+      if (d > depth) html += '<ul><li>'; else { closeLists(d); html += '</li><li>'; }
+      depth = d;
+      html += inline(li[2]);
+      continue;
+    }
+    closeLists();
+    if (line.startsWith('# ')) html += `<h2 class="helptitle">${inline(line.slice(2))}</h2>`;
+    else if (line.startsWith('## ')) html += `${html.includes('<details') ? '</details>' : ''}<details class="card help"><summary><h3>${inline(line.slice(3))}</h3></summary>`;
+    else if (line.trim()) html += `<p>${inline(line)}</p>`;
+  }
+  closeLists();
+  return html + (html.includes('<details') ? '</details>' : '');
+}
+
+async function renderHelp() {
+  main.innerHTML = '<p class="center muted">Cargando…</p>';
+  try { main.innerHTML = md(await text('ayuda.md')); main.querySelector('details')?.setAttribute('open', ''); }
+  catch { main.innerHTML = '<p class="error">No se pudo cargar la ayuda (¿sin conexión?).</p>'; }
+}
+
+// ---------- Crear rutina a mano ----------
+// Borrador en memoria con la misma forma que un item; solo ejercicios del catálogo. Guardar crea una versión nueva de la rutina.
+
+const TLABEL = { gym: 'Gimnasio', run: 'Trote', field: 'Campo', check: 'Check' };
+const FL = { time: 'Tiempo', distance: 'Distancia', reps: 'Reps', sets: 'Series', intensity: 'Intensidad' };
+const WD = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+let draft = null;
+const newDraft = (type, keep = {}) => ({ date: P.today(), days: [], weeks: 4, mode: 'add', name: '', ...keep, type, title: TLABEL[type], exercises: [], steps: [], target: -1, q: '', group: '' });
+const at = path => path.split('.').reduce((o, k) => o[k], draft);
+
+const ctl = (path, v, { t = '', ph = '', type = 'text' } = {}) =>
+  `<input type="${type}" data-f="${path}" ${t ? `data-t="${t}"` : ''} value="${esc(v ?? '')}" placeholder="${ph}" class="short" ${type === 'number' ? 'inputmode="numeric" min="1"' : ''}>`;
+const moveBtns = (list, i) => `<span class="mv">
+  <button type="button" class="icon" data-act="up" data-l="${list}" data-i="${i}" aria-label="Subir">↑</button>
+  <button type="button" class="icon" data-act="down" data-l="${list}" data-i="${i}" aria-label="Bajar">↓</button>
+  <button type="button" class="icon" data-act="del" data-l="${list}" data-i="${i}" aria-label="Quitar">✕</button></span>`;
+
+const gymDraft = d => d.exercises.length ? `<ol class="drafted">${d.exercises.map((e, i) => `<li>
+  <div class="drow"><b>${esc(e.name)}</b>${moveBtns('exercises', i)}</div>
+  <div class="row">
+    <label class="inline">Series ${ctl(`exercises.${i}.sets`, e.sets, { t: 'int', type: 'number' })}</label>
+    <label class="inline">Reps ${ctl(`exercises.${i}.reps`, e.reps, { t: 'reps', ph: '8-10' })}</label>
+    <label class="inline">Tiempo ${ctl(`exercises.${i}.time`, e.time, { ph: '30s' })}</label>
+    <label class="inline">Kg ${ctl(`exercises.${i}.weight`, e.weight, { t: 'num', ph: '–' })}</label>
+    <label class="chk"><input type="checkbox" data-f="exercises.${i}.per_side" ${e.per_side ? 'checked' : ''}><span>Por lado</span></label>
+  </div>
+  <input data-f="exercises.${i}.notes" value="${esc(e.notes ?? '')}" placeholder="Notas" class="wide" aria-label="Notas">
+</li>`).join('')}</ol>` : '<p class="muted">Agregá ejercicios del catálogo.</p>';
+
+const stepRow = (s, list, i) => `<li><div class="drow"><b>${esc(s.do)}</b>${moveBtns(list, i)}</div>
+  <div class="row">${Object.entries(FL).map(([f, l]) => `<label class="inline">${l} ${ctl(`${list}.${i}.${f}`, s[f], f === 'sets' ? { t: 'int', type: 'number' } : f === 'reps' ? { t: 'reps' } : {})}</label>`).join('')}</div></li>`;
+
+const stepsDraft = d => `${d.steps.length ? `<ol class="drafted">${d.steps.map((s, i) => s.repeat ? `<li class="block${d.target === i ? ' on' : ''}">
+    <div class="drow"><label class="inline">Repetir ${ctl(`steps.${i}.repeat`, s.repeat, { t: 'int', type: 'number' })} veces</label>${moveBtns('steps', i)}</div>
+    ${s.steps.length ? `<ol>${s.steps.map((x, j) => stepRow(x, `steps.${i}.steps`, j)).join('')}</ol>` : '<p class="muted">Bloque vacío.</p>'}
+    <button type="button" class="link" data-act="target" data-i="${d.target === i ? -1 : i}">${d.target === i ? 'Listo con este bloque' : 'Agregar pasos a este bloque'}</button>
+  </li>` : stepRow(s, 'steps', i)).join('')}</ol>` : '<p class="muted">Agregá pasos del catálogo.</p>'}
+  <button type="button" class="ghostbtn" data-act="block">+ Bloque "Repetir N veces"</button>`;
+
+function pickList() {
+  const d = draft, kinds = d.type === 'gym' ? ['gym'] : ['run', 'field'], q = d.q.trim().toLowerCase();
+  const list = Object.entries(catalog?.exercises ?? {}).filter(([, e]) => kinds.includes(e.kind) && (!d.group || e.group === d.group) && (!q || e.name.toLowerCase().includes(q)));
+  return list.length ? list.map(([id, e]) => `<button type="button" class="pick" data-act="add" data-id="${esc(id)}">+ ${esc(e.name)}<small>${esc(e.group ?? '')}</small></button>`).join('')
+    : `<p class="muted">${catalog ? 'Nada coincide con la búsqueda.' : 'El catálogo no está cargado: abrí la app con señal.'}</p>`;
+}
+
+function picker(d) {
+  const kinds = d.type === 'gym' ? ['gym'] : ['run', 'field'];
+  const groups = [...new Set(Object.values(catalog?.exercises ?? {}).filter(e => kinds.includes(e.kind)).map(e => e.group).filter(Boolean))].sort();
+  return `<div class="picker">
+    <p class="lbl">Agregar ${d.type === 'gym' ? 'ejercicio' : d.target >= 0 ? `paso al bloque ${d.target + 1}` : 'paso'}</p>
+    <div class="row"><input type="search" id="cq" placeholder="Buscar" value="${esc(d.q)}" aria-label="Buscar en el catálogo">
+      <select id="cg" aria-label="Grupo"><option value="">Todos</option>${groups.map(g => `<option ${g === d.group ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select></div>
+    <div id="cres">${pickList()}</div></div>`;
+}
+
+function renderCreator(msg = '') {
+  const d = draft ??= newDraft('gym');
+  main.innerHTML = `<div id="creator">${msg}
+    <section class="card"><header><h3>Crear rutina</h3></header>
+      <div class="pills">${Object.entries(TLABEL).map(([t, l]) => `<label class="pill"><input type="radio" name="ctype" value="${t}" data-act="type" ${d.type === t ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+      <div class="row">
+        <label class="inline">Fecha <input type="date" data-f="date" value="${d.date}"></label>
+        <label class="inline">Título <input data-f="title" value="${esc(d.title)}" class="wide"></label>
+      </div>
+      ${plan ? '' : `<label class="inline">Nombre de la rutina <input data-f="name" value="${esc(d.name)}" placeholder="Mi rutina" class="wide"></label>`}
+      ${d.type === 'gym' ? gymDraft(d) : d.type === 'check' ? '' : stepsDraft(d)}
+      ${d.type === 'check' ? '' : picker(d)}
+    </section>
+    <section class="card"><header><h3>Repetir</h3></header>
+      <p class="target">Elegí días de la semana para repetirla desde la fecha. Sin días, se crea solo esa fecha.</p>
+      <div class="pills">${WD.map((w, i) => `<label class="pill"><input type="checkbox" data-wd="${i}" ${d.days.includes(i) ? 'checked' : ''}><span>${w}</span></label>`).join('')}</div>
+      <label class="inline">Durante ${ctl('weeks', d.weeks, { t: 'int', type: 'number' })} semanas</label>
+      <div id="csum"></div>
+      <div class="actions"><button type="button" data-act="save">Guardar en la rutina</button><a class="button ghost" href="#/plan">Cancelar</a></div>
+    </section></div>`;
+  creatorSummary();
+}
+
+function creatorSummary() {
+  const d = draft, dates = P.repeatDates(d.date, d.days, d.weeks);
+  const busy = dates.filter(x => P.dayOf(plan ?? { days: [] }, x)?.items.length);
+  const fd = x => fmtDate(x, { weekday: 'short', day: 'numeric', month: 'numeric' });
+  main.querySelector('#csum').innerHTML = `<p>Se crea en ${dates.length === 1 ? '1 día' : `${dates.length} días`}: ${dates.slice(0, 8).map(x => esc(fd(x))).join(', ')}${dates.length > 8 ? ` y ${dates.length - 8} más` : ''}.</p>
+    ${busy.length ? `<p class="warn">${busy.length === 1 ? '1 de esos días ya tiene' : `${busy.length} de esos días ya tienen`} algo en la rutina:</p>
+      ${radios('c', 'mode', d.mode, [['add', 'Agregar'], ['replace', 'Reemplazar']]).replace(/data-p=/g, 'data-f=')}
+      <p class="target">Lo que ya tiene registros no se reemplaza nunca.</p>` : ''}`;
+}
+
+function setDraft(el) {
+  const ks = el.dataset.f.split('.'), o = ks.slice(0, -1).reduce((o, k) => o[k], draft);
+  let v = el.type === 'checkbox' ? el.checked : el.value.trim();
+  if (el.dataset.t === 'int') v = v === '' ? null : parseInt(v) || null;
+  else if (el.dataset.t === 'num') v = v === '' || isNaN(v.replace(',', '.')) ? null : Number(v.replace(',', '.'));
+  else if (el.dataset.t === 'reps' && /^\d+$/.test(v)) v = Number(v);
+  o[ks.at(-1)] = v;
+  if (['date', 'weeks'].includes(el.dataset.f)) creatorSummary();
+}
+
+function creatorAct(el) {
+  const d = draft, act = el.dataset.act;
+  if (act === 'type') draft = newDraft(el.value, { date: d.date, days: d.days, weeks: d.weeks, mode: d.mode, name: d.name });
+  if (act === 'add') {
+    const e = catalog.exercises[el.dataset.id], { weight, ...rest } = e.defaults ?? {};
+    if (d.type === 'gym') d.exercises.push({ ex: el.dataset.id, name: e.name, sets: 3, ...e.defaults });
+    else (d.target >= 0 ? d.steps[d.target].steps : d.steps).push({ ex: el.dataset.id, do: e.name, ...rest });
+  }
+  if (['up', 'down', 'del'].includes(act)) {
+    const list = at(el.dataset.l), i = +el.dataset.i, j = act === 'up' ? i - 1 : i + 1;
+    if (act === 'del') list.splice(i, 1);
+    else if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j], list[i]];
+    if (el.dataset.l === 'steps') d.target = -1; // los índices de bloque cambiaron
+  }
+  if (act === 'block') { d.steps.push({ repeat: 4, steps: [] }); d.target = d.steps.length - 1; }
+  if (act === 'target') d.target = +el.dataset.i;
+  if (act === 'save') return saveCreator();
+  const y = scrollY;
+  renderCreator();
+  scrollTo(0, y);
+}
+
+async function saveCreator() {
+  const d = draft;
+  if (d.type === 'gym' && !d.exercises.length) return renderCreator('<p class="error">Agregá al menos un ejercicio.</p>');
+  if (['run', 'field'].includes(d.type) && !d.steps.length) return renderCreator('<p class="error">Agregá al menos un paso.</p>');
+  const item = P.cleanItem({ type: d.type, title: d.title || TLABEL[d.type], by: 'manual', ...(d.type === 'gym' ? { exercises: d.exercises } : d.type === 'check' ? {} : { steps: d.steps }) });
+  const dates = P.repeatDates(d.date, d.days, d.weeks);
+  const p = P.mergeItems(plan, dates, item, d.mode, logs, d.name || 'Mi rutina');
+  const err = P.validatePlan(p);
+  if (err.length) return renderCreator(`<p class="error">Revisá la sesión:<br>${err.map(esc).join('<br>')}</p>`);
+  const error = await savePlan(p);
+  if (error) return renderCreator(`<p class="error">No se pudo guardar (¿sin conexión?): ${esc(error.message)}</p>`);
+  draft = null;
+  location.hash = `#/d/${dates[0]}`;
+}
+
+main.addEventListener('input', e => {
+  if (!e.target.closest('#creator')) return;
+  if (e.target.id === 'cq') { draft.q = e.target.value; main.querySelector('#cres').innerHTML = pickList(); }
+  else if (e.target.dataset.f && e.target.type !== 'radio' && e.target.type !== 'checkbox') setDraft(e.target);
+});
+main.addEventListener('change', e => {
+  if (!e.target.closest('#creator')) return;
+  const el = e.target;
+  if (el.id === 'cg') { draft.group = el.value; main.querySelector('#cres').innerHTML = pickList(); }
+  else if (el.dataset.act === 'type') creatorAct(el);
+  else if (el.dataset.wd) { const i = +el.dataset.wd; draft.days = el.checked ? [...draft.days, i].sort() : draft.days.filter(x => x !== i); creatorSummary(); }
+  else if (el.type === 'radio' && el.dataset.f === 'mode') draft.mode = el.value;
+  else if (el.dataset.f) setDraft(el);
+});
+main.addEventListener('click', e => {
+  const el = e.target.closest('#creator button[data-act]');
+  if (el) creatorAct(el);
+});
+
 function renderLogin(msg = '') {
   main.innerHTML = `<form class="card" id="login">
     <header><h3>Entrar</h3></header>
@@ -595,6 +789,8 @@ function route() {
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (h.startsWith('/d/') ? '/' : h)));
   document.getElementById('tabs').hidden = !user;
   if (!user) return renderLogin();
+  if (h === '/ayuda') return renderHelp();
+  if (h === '/crear') return renderCreator();
   if (!plan || h === '/plan') return renderPlan();
   if (h === '/analisis') return renderAnalysis();
   if (h === '/imprimir') return renderPrint();
