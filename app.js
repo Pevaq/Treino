@@ -195,7 +195,7 @@ function gymBody(item, log, date) {
       <summary>
         <span class="exname">${esc(ex.name)}</span>
         <span class="target">${exerciseTarget(ex)}${!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly ? ` · ${esc(kgShown)} kg` : ''}</span>
-        <span class="exstat" data-s="${statKind(exStatus(ex, l))}">${exStatus(ex, l)}</span>
+        <button type="button" class="exstat" data-s="${statKind(exStatus(ex, l))}" aria-label="Marcar o desmarcar todas las series">${exStatus(ex, l)}</button>
         ${catalog?.exercises?.[id]?.videos?.length ? `<button type="button" class="play" data-video="${esc(id)}" aria-label="Ver video de ${esc(ex.name)}">${IC.play}</button>` : ''}
       </summary>
       <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
@@ -510,6 +510,16 @@ function showVideo(id, msg = '') {
 main.addEventListener('click', e => {
   const b = e.target.closest('.play');
   if (b) { e.preventDefault(); showVideo(b.dataset.video); } // preventDefault: que no abra/cierre el ejercicio
+  // Estado del ejercicio: tilda todas las series (o las destilda si ya estaban todas), sin abrirlo.
+  const st = e.target.closest('.exstat');
+  if (st) {
+    e.preventDefault();
+    const ex = st.closest('.ex'), boxes = [...ex.querySelectorAll('input[data-p$=".done"]')];
+    const on = !boxes.every(c => c.checked);
+    boxes.forEach(c => { c.checked = on; });
+    if (on) ex.querySelector('input[data-p$=".skip"]').checked = false;
+    boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
+  }
   if (e.target.id === 'seen') { ls.set('seenChange', e.target.dataset.at); e.target.closest('.changes').remove(); }
   if (e.target.matches('.done-all')) {
     const card = e.target.closest('[data-key]'), key = card.dataset.key;

@@ -222,6 +222,10 @@ details.ex:has(.exstat[data-s=skip]) > summary .exname { text-decoration: line-t
 .exstat[data-s=done] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .exstat[data-s=part] { border-color: var(--warn); color: var(--warn); }
 .exstat[data-s=skip] { text-decoration: line-through; }
+button.exstat { background: none; margin: -6px 0; min-height: 44px; min-width: 52px; cursor: pointer; }
+button.exstat[data-s=done] { background: var(--accent); }
+.exstat[data-s=none] { font-size: 0; }
+.exstat[data-s=none]::after { content: '✓'; font-size: 15px; }
 details.ex > summary .play {
   display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: -6px 0;
   border-radius: 99px; background: var(--surface-2); color: var(--accent);
