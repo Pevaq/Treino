@@ -564,7 +564,7 @@ async function renderAnalysis() {
     data: {
       labels: pain.map(r => (r.impact ? '▲' : '') + fmtDate(r.date, { day: 'numeric', month: 'numeric' })),
       datasets: [
-        { label: 'Durante', data: pain.map(r => r.during), borderColor: tok('--info'), backgroundColor: tok('--info'), spanGaps: true },
+        { label: 'Durante', data: pain.map(r => r.during), borderColor: tok('--violet'), backgroundColor: tok('--violet'), spanGaps: true },
         { label: 'Mañana siguiente', data: pain.map(r => r.morning), borderColor: tok('--warn'), spanGaps: true,
           pointBackgroundColor: pain.map(r => r.swelling ? tok('--danger') : tok('--warn')), pointRadius: pain.map(r => r.swelling ? 6 : 3) },
         { label: 'Máximo', data: pain.map(() => max), borderColor: fg, borderDash: [4, 4], pointRadius: 0 },

@@ -3,7 +3,7 @@
   <rect width="512" height="512" fill="#0F1412"/>
   <g transform="translate(256 256) scale(.8) translate(-256 -261)">
     <path d="M256 176 V372" stroke="#E8EEEA" stroke-width="34" stroke-linecap="round"/>
-    <path d="M120 150 H392 M120 150 V222 M392 150 V222" stroke="#B8F23A" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M120 150 H392 M120 150 V222 M392 150 V222" stroke="#4DD9F0" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     <circle cx="352" cy="340" r="32" fill="#E8EEEA"/>
   </g>
 </svg>

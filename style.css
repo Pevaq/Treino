@@ -6,7 +6,7 @@
 :root {
   --bg: #0F1412; --surface: #161D1A; --surface-2: #1D2622; --line: #26312C;
   --text: #E8EEEA; --muted: #8E9C94; --on-accent: #0F1412;
-  --accent: #B8F23A; --mint: #7FE0B0; --warn: #F5A524; --danger: #F0614F; --info: #6CB4FF;
+  --accent: #4DD9F0; --lime: #B8F23A; --warn: #F5A524; --danger: #F0614F; --violet: #B49CFF;
   --cond: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --tabs: 60px;
   color-scheme: dark;
@@ -54,8 +54,8 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
   box-shadow: inset 3px 0 0 var(--stripe, transparent);
 }
 .t-gym, .t-match { --stripe: var(--accent); }
-.t-run, .t-field { --stripe: var(--mint); }
-.t-check { --stripe: var(--info); }
+.t-run, .t-field { --stripe: var(--lime); }
+.t-check { --stripe: var(--violet); }
 .card > header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 h3 { margin: 0 0 6px; font-size: 21px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; line-height: 1.15; }
 h3 .ic { margin-right: 6px; vertical-align: -2px; }
@@ -246,7 +246,7 @@ details.stop .steps > li:first-child { border-top: 0; }
   display: flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
   margin: 0 0 2px; padding-bottom: 3px; border-bottom: 2px solid var(--text);
 }
-.print h2::before { content: ''; width: 10px; height: 10px; border-radius: 2px; background: #B8F23A; flex: none; }
+.print h2::before { content: ''; width: 10px; height: 10px; border-radius: 2px; background: #4DD9F0; flex: none; }
 .print small { color: var(--muted); }
 .session { margin: 18px 0; }
 .tablewrap { overflow-x: auto; margin-top: 6px; }
@@ -294,7 +294,7 @@ input.wide, input[type=search] { width: 100%; min-width: 0; }
 .row label.inline:has(input.wide) { flex: 1 1 180px; }
 .drafted { list-style: none; padding: 0; margin: 8px 0; counter-reset: d; }
 .drafted > li { border-top: 1px solid var(--line); padding: 10px 0; }
-.drafted ol { list-style: none; padding: 0 0 0 12px; margin: 4px 0; border-left: 2px solid var(--mint); }
+.drafted ol { list-style: none; padding: 0 0 0 12px; margin: 4px 0; border-left: 2px solid var(--lime); }
 .drow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .drow b { min-width: 0; overflow-wrap: anywhere; }
 .mv { display: flex; flex: none; }
