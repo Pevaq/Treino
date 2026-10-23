@@ -1,5 +1,5 @@
 // Cache para abrir la app sin señal. Subir la versión en cada deploy: así el celular baja todo y la app se recarga sola.
-const C = 'treino-v13';
+const C = 'treino-v14';
 const SHELL = ['./', 'index.html', 'app.js', 'plan.js', 'config.js', 'style.css', 'manifest.json', 'ayuda.md', 'prompt-rutina.md', 'icon.svg', 'icon-192.png', 'fonts/barlow-condensed-600.woff2', 'fonts/barlow-condensed-700.woff2', 'fonts/inter-tight.woff2'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))))); self.skipWaiting(); });
