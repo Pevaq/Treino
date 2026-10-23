@@ -278,6 +278,48 @@ function changesCard() {
   </section>`;
 }
 
+// Selector Hoy | Semana; la última elección se recuerda en este dispositivo.
+const viewSeg = (v, date) => `<nav class="seg" aria-label="Vista">
+  <a href="#/d/${date}" data-view="hoy" ${v === 'hoy' ? 'aria-current="page"' : ''}>Hoy</a>
+  <a href="#/s/${date}" data-view="semana" ${v === 'semana' ? 'aria-current="page"' : ''}>Semana</a></nav>`;
+
+// Estado del día: el cierre si lo hay; si no, derivado de los items (como el export). Futuro u hoy sin avances: sin estado.
+function dayStatus(day, t) {
+  const st = logs[`${day.date}|_day`]?.status;
+  if (st || day.date > t) return st ?? null;
+  const f = day.items.map(i => { const [a, b] = P.itemProgress(i, logs[`${day.date}|${i.id}`]); return b ? a / b : 0; });
+  return f.every(x => x === 1) ? 'hecho' : f.some(x => x > 0) ? 'parcial' : day.date === t ? null : 'no hecho';
+}
+
+function renderWeek(date) {
+  const t = P.today(), mon = P.weekStart(date), sun = P.addDays(mon, 6);
+  const dates = [...Array(7).keys()].map(n => P.addDays(mon, n));
+  const days = dates.map(d => P.dayOf(plan, d)).filter(Boolean);
+  const done = days.filter(d => dayStatus(d, t) === 'hecho').length;
+  const max = plan.rules?.max_pain ?? 3;
+  const alarm = P.painSeries(plan, logs, sun).some(r => r.date >= mon && (r.swelling || r.during > max || r.morning > max));
+  const dm = d => fmtDate(d, { day: '2-digit', month: '2-digit' });
+  const range = mon.slice(5, 7) === sun.slice(5, 7) ? `${mon.slice(8)}–${dm(sun)}` : `${dm(mon)}–${dm(sun)}`;
+  const label = { hecho: '✓ hecho', parcial: 'parcial', 'no hecho': 'no hecho' };
+  main.innerHTML = `
+    ${viewSeg('semana', t >= mon && t <= sun ? t : mon)}
+    <nav class="daynav">
+      <a href="#/s/${P.addDays(mon, -7)}" aria-label="Semana anterior">${IC.prev}</a>
+      <div class="score"><small>Semana</small><b>${esc(range)}</b></div>
+      <a href="#/s/${P.addDays(mon, 7)}" aria-label="Semana siguiente">${IC.next}</a>
+    </nav>
+    <p class="weeksum">${days.length ? `<b>${done} de ${days.length}</b> sesiones hechas` : 'Semana sin sesiones'}
+      ${alarm ? `<span class="badge alarm">dolor &gt; ${max} o hinchazón</span>` : ''}</p>
+    <section class="card list">${dates.map(d => {
+      const day = P.dayOf(plan, d), st = day && dayStatus(day, t);
+      return `<a class="dayrow week ${d === t ? 'today' : ''} ${day ? '' : 'rest'}" href="#/d/${d}">
+        <span class="date">${esc(fmtDate(d, { weekday: 'short' }).replace('.', ''))} ${d.slice(8)}</span>
+        <span class="titles">${day ? day.items.map(i => `<span class="ichip t-${esc(i.type)}">${esc(i.title)}</span>`).join('') : 'Descanso'}</span>
+        <span class="pct${st === 'hecho' ? ' full' : st === 'parcial' ? ' part' : ''}">${st ? label[st] : ''}</span>
+      </a>`;
+    }).join('')}</section>`;
+}
+
 function renderDay(date) {
   const isToday = date === P.today();
   const day = P.dayOf(plan, date);
@@ -285,6 +327,7 @@ function renderDay(date) {
   const dl = logs[`${date}|_day`] ?? {};
   const stage = day?.items.find(i => i.stage)?.stage;
   main.innerHTML = `
+    ${viewSeg('hoy', date)}
     <nav class="daynav">
       <a href="#/d/${P.addDays(date, -1)}" aria-label="Día anterior">${IC.prev}</a>
       <div class="score">
@@ -294,7 +337,7 @@ function renderDay(date) {
       </div>
       <a href="#/d/${P.addDays(date, 1)}" aria-label="Día siguiente">${IC.next}</a>
     </nav>
-    ${!isToday ? `<p class="center"><a href="#/">Volver a hoy</a></p>` : changesCard()}
+    ${!isToday ? `<p class="center"><a href="#/d/${P.today()}">Volver a hoy</a></p>` : changesCard()}
     ${P.morningRequired(plan, date) ? morningCard(date) : ''}
     ${day ? day.items.map(i => itemCard(i, date, stage)).join('') : `<section class="card center"><h3>Descanso</h3>
       ${next ? `<p>Próximo: <a href="#/d/${next.date}">${esc(fmtDate(next.date))}</a> · ${next.items.map(i => esc(i.title)).join(', ')}</p>` : '<p>No hay más días en la rutina.</p>'}</section>`}
@@ -786,7 +829,7 @@ function renderLogin(msg = '') {
 
 function route() {
   const h = location.hash.slice(1) || '/';
-  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (h.startsWith('/d/') ? '/' : h)));
+  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (/^\/[ds]\//.test(h) ? '/' : h)));
   document.getElementById('tabs').hidden = !user;
   if (!user) return renderLogin();
   if (h === '/ayuda') return renderHelp();
@@ -794,9 +837,12 @@ function route() {
   if (!plan || h === '/plan') return renderPlan();
   if (h === '/analisis') return renderAnalysis();
   if (h === '/imprimir') return renderPrint();
-  renderDay(/^\/d\/\d{4}-\d{2}-\d{2}$/.test(h) ? h.slice(3) : P.today());
+  const m = /^\/([ds])\/(\d{4}-\d{2}-\d{2})$/.exec(h);
+  if (m ? m[1] === 's' : ls.get('view', 'hoy') === 'semana') return renderWeek(m ? m[2] : P.today());
+  renderDay(m ? m[2] : P.today());
 }
 addEventListener('hashchange', route);
+main.addEventListener('click', e => { const v = e.target.closest('[data-view]'); if (v) ls.set('view', v.dataset.view); });
 
 sb.auth.onAuthStateChange((event, session) => {
   const was = user?.id;
