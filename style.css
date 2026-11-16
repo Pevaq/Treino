@@ -260,12 +260,13 @@ button.svid {
   background: none; color: var(--accent); box-shadow: inset 0 0 0 1px var(--line); text-align: left;
 }
 button.svid .ic { fill: currentColor; stroke-width: 1.5; width: 16px; height: 16px; }
-.vbox .vframe { max-height: 28dvh; }
 /* Con el video abierto, las series se achican para que siga entrando sin scroll. */
-.sx.vid-open { gap: 8px; }
+/* Video abierto: ocupa todo el alto que queda hasta los botones (el resto del ejercicio se oculta). */
+.sx.vid-open { gap: 8px; height: 100%; }
 .sx.vid-open :is(.minor, details.adjust) { display: none; }
-.sx.vid-open .f { height: 34px; }
-.sx.vid-open .f input { height: 32px; }
+.vbox { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.vbox .vframe { flex: 1; min-height: 0; max-height: none; max-width: 100%; height: 100%; }
+.vbox > details { flex: none; }
 .vbox .target { margin: 6px 0 0; font-size: 12px; }
 .sets { display: flex; flex-direction: column; gap: 6px; }
 .sess .set { display: grid; grid-template-columns: 64px 1fr 1fr; gap: 8px; align-items: center; }
