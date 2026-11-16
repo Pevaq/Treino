@@ -119,8 +119,7 @@ function onEdit(e) {
   if (prog) prog.textContent = progText(item, logs[key]);
   card.querySelector('.segs')?.replaceWith(...tpl(segs(item, logs[key])));
   if (item?.type === 'gym') {
-    card.querySelectorAll('.exstat').forEach((el, i) => { el.textContent = exStatus(item.exercises[i], logs[key]?.ex?.[i]); el.dataset.s = statKind(el.textContent); });
-    card.querySelectorAll('.exdot').forEach((el, i) => { el.dataset.s = statKind(exStatus(item.exercises[i], logs[key]?.ex?.[i])); });
+    if (card.matches('.sess')) paintDots(card);
   }
   if (e.target.matches('textarea')) grow(e.target);
 }
@@ -177,63 +176,113 @@ function exStatus(ex, l) {
   return d === sets.length ? '✓' : d ? `${d} de ${sets.length}` : '—';
 }
 
-// Ejercicio a la vista en cada sesión de gimnasio (por card). Arranca en el primero sin terminar.
-const exPos = {};
+// ---------- Sesión de gimnasio (pantalla completa, #/g/<fecha>/<id>) ----------
+// Un ejercicio por pantalla y un resumen al final. Todos los ejercicios están en el DOM (ocultos menos uno)
+// dentro de un solo [data-key], así serialize/onEdit funcionan igual que en una card.
+const exPos = {}; // paso a la vista por sesión; n = resumen
 const exDone = (ex, l) => l?.skip || P.setsOf(ex).every((_, j) => l?.sets?.[j]?.done);
-const startPos = (item, log) => Math.max(0, item.exercises.findIndex((ex, i) => !exDone(ex, log?.ex?.[i])));
+const startPos = (item, log) => { const i = item.exercises.findIndex((ex, j) => !exDone(ex, log?.ex?.[j])); return i < 0 ? item.exercises.length : i; };
 
-// Gimnasio: un ejercicio por vez, con Anterior / Siguiente. Todos quedan en la card (ocultos) para que serialize los lea.
-function gymBody(item, log, date) {
-  const key = `${date}|${item.id}`, n = item.exercises.length;
-  const pos = exPos[key] = Math.min(exPos[key] ?? startPos(item, log), n - 1);
-  const dots = item.exercises.map((ex, i) => `<button type="button" class="exdot" data-to="${i}" data-s="${statKind(exStatus(ex, log?.ex?.[i]))}" ${i === pos ? 'aria-current="step"' : ''} aria-label="Ir a ${esc(ex.name)}">${i + 1}</button>`).join('');
-  return `<nav class="exnav" aria-label="Ejercicios"><span class="lbl">Ejercicio <b class="expos">${pos + 1}</b> de ${n}</span><div class="exdots">${dots}</div></nav>` + item.exercises.map((ex, i) => {
-    const l = log?.ex?.[i];
-    const id = P.exId(catalog, ex);
-    const last = P.lastWeight(logs, { ex: id, name: ex.name }, date);
-    const kgShown = l?.sets?.find(s => s?.kg != null)?.kg ?? ex.weight ?? last;
-    const rows = P.setsOf(ex).map((s, j) => {
-      const sl = l?.sets?.[j];
-      const reps = sl?.reps ?? (s.reps != null ? parseInt(s.reps) || null : null);
-      const timed = s.reps == null && s.time;
-      return `<div class="set">
-        ${chk(`ex.${i}.sets.${j}.done`, sl?.done, `Serie ${j + 1}`)}
-        ${timed ? `<span class="muted">${esc(s.time)}</span>` : `${num(`ex.${i}.sets.${j}.reps`, reps, 'reps')}<span class="u">reps</span>
-        ${num(`ex.${i}.sets.${j}.kg`, sl?.kg ?? s.weight ?? last, 'kg')}<span class="u">kg</span>`}
-      </div>`;
-    }).join('');
-    const timedOnly = P.setsOf(ex).every(s => s.reps == null && s.time);
-    return `<section class="ex" data-i="${i}" ${i === pos ? '' : 'hidden'}>
-      <div class="exhead">
-        <h4 class="exname">${esc(ex.name)}</h4>
-        <span class="target">${exerciseTarget(ex)}${!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly ? ` · ${esc(kgShown)} kg` : ''}</span>
-        <button type="button" class="exstat" data-s="${statKind(exStatus(ex, l))}" aria-label="Marcar o desmarcar todas las series">${exStatus(ex, l)}</button>
-        ${catalog?.exercises?.[id]?.videos?.length ? `<button type="button" class="play" data-video="${esc(id)}" aria-label="Ver video de ${esc(ex.name)}">${IC.play}</button>` : ''}
-      </div>
-      <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
-      ${ex.notes ? `<p class="target"><em>${esc(ex.notes)}</em></p>` : ''}
-      ${timedOnly ? '' : `<label class="inline">kg para todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
-      ${rows}
-      ${chk(`ex.${i}.skip`, l?.skip, 'No lo hice')}
-      <details ${l?.note || l?.pain != null ? 'open' : ''}><summary>Nota / dolor</summary>${pain(`ex.${i}.pain`, l?.pain)}${note(`ex.${i}.note`, l?.note)}</details>
-      <div class="exmove">
-        <button type="button" class="exgo" data-to="${i - 1}" ${i ? '' : 'disabled'}>${IC.prev} Anterior</button>
-        <button type="button" class="exnext" data-to="${i + 1}">${i < n - 1 ? `Hecho, siguiente ${IC.next}` : 'Hecho ✓'}</button>
-      </div>
-    </section>`;
-  }).join('');
+// Card del día: lista corta y el botón para arrancar.
+function gymCard(item, log, date) {
+  const started = item.exercises.some((ex, i) => exStatus(ex, log?.ex?.[i]) !== '—');
+  const more = item.exercises.length - 4;
+  return `<ul class="exlist">${item.exercises.slice(0, more > 1 ? 4 : 5).map((ex, i) => {
+    const st = exStatus(ex, log?.ex?.[i]);
+    return `<li><span class="exname">${esc(ex.name)}</span><span class="target">${exerciseTarget(ex)}</span><span class="exstat" data-s="${statKind(st)}">${st}</span></li>`;
+  }).join('')}${more > 1 ? `<li class="more">+ ${more} ejercicios más</li>` : ''}</ul>
+  <a class="button start" href="#/g/${date}/${encodeURIComponent(item.id)}">${log?.confirmed ? 'Ver sesión' : `${IC.play} ${started ? 'Seguir sesión' : 'Empezar sesión'}`}</a>`;
 }
 
-// Muestra otro ejercicio de la card sin re-renderizar (los inputs quedan como están).
-function showEx(card, to) {
-  const secs = card.querySelectorAll('section.ex');
-  if (to < 0 || to >= secs.length) return;
-  exPos[card.dataset.key] = to;
-  secs.forEach((s, i) => { s.hidden = i !== to; });
-  card.querySelectorAll('.exdot').forEach((d, i) => { if (i === to) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
-  card.querySelector('.expos').textContent = to + 1;
-  // Que el ejercicio nuevo arranque a la vista (en el celular, el anterior pudo quedar scrolleado).
-  card.querySelector('.exnav').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+function sessionEx(ex, i, log, date) {
+  const l = log?.ex?.[i], id = P.exId(catalog, ex), cat = catalog?.exercises?.[id];
+  const last = P.lastWeight(logs, { ex: id, name: ex.name }, date);
+  const sets = P.setsOf(ex), timedOnly = sets.every(s => s.reps == null && s.time);
+  const kgShown = l?.sets?.find(s => s?.kg != null)?.kg ?? ex.weight ?? last;
+  const chips = exerciseTarget(ex).split(' · ');
+  if (!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly) chips.splice(1, 0, `${esc(kgShown)} kg`);
+  const how = [cat?.cue, ex.notes].filter(Boolean).map(esc).join(' ');
+  const rows = sets.map((s, j) => {
+    const sl = l?.sets?.[j], timed = s.reps == null && s.time;
+    const reps = sl?.reps ?? (s.reps != null ? parseInt(s.reps) || null : null);
+    return `<div class="set">
+      <label class="ck"><input type="checkbox" data-p="ex.${i}.sets.${j}.done" ${sl?.done ? 'checked' : ''} aria-label="Serie ${j + 1}"><span>${j + 1}</span></label>
+      ${timed ? `<span class="f">${esc(s.time)}</span>` : `<label class="f">${num(`ex.${i}.sets.${j}.reps`, reps, 'reps')}<small>reps</small></label>
+      <label class="f">${num(`ex.${i}.sets.${j}.kg`, sl?.kg ?? s.weight ?? last, 'kg')}<small>kg</small></label>`}
+    </div>`;
+  }).join('');
+  return `<section class="sx ex" data-i="${i}" hidden>
+    <h1 class="sname">${esc(ex.name)}</h1>
+    <div class="schips">${chips.map((c, k) => `<span class="schip${k ? '' : ' a'}">${c}</span>`).join('')}</div>
+    ${how ? `<p class="how"><b>Cómo hacerlo</b>${how}</p>` : ''}
+    ${cat?.videos?.length ? `<button type="button" class="svid" data-video="${esc(id)}" aria-expanded="false">${IC.play}<span>Ver video</span></button><div class="vbox" hidden></div>` : ''}
+    <div class="sets">${rows}</div>
+    <div class="minor">
+      ${chk(`ex.${i}.skip`, l?.skip, 'No lo hice')}
+      ${timedOnly ? '' : `<label class="inline">kg todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
+      <details ${l?.note || l?.pain != null ? 'open' : ''}><summary>Nota / dolor</summary>${pain(`ex.${i}.pain`, l?.pain)}${note(`ex.${i}.note`, l?.note)}</details>
+    </div>
+    <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
+  </section>`;
+}
+
+function renderSession(date, id) {
+  const item = P.dayOf(plan, date)?.items.find(i => i.id === id);
+  if (item?.type !== 'gym') return renderDay(date);
+  const key = `${date}|${id}`, log = logs[key];
+  main.innerHTML = `<div class="sess" data-key="${esc(key)}">
+    <header class="sbar"><a class="sclose" href="#/d/${date}" aria-label="Salir de la sesión">✕</a><p class="count" aria-live="polite"></p><span></span></header>
+    <nav class="sdots" aria-label="Ejercicios">${item.exercises.map((ex, i) => `<button type="button" class="sdot" data-to="${i}" aria-label="Ir a ${esc(ex.name)}"><i></i></button>`).join('')}</nav>
+    <div class="sbody">${item.exercises.map((ex, i) => sessionEx(ex, i, log, date)).join('')}<section class="sx sum" data-i="${item.exercises.length}" hidden></section></div>
+    ${log?.confirmed ? '<input type="hidden" data-p="confirmed" data-t="bool" value="true">' : ''}
+    <footer class="sfoot"><button type="button" class="sprev" aria-label="Anterior">${IC.prev}</button><button type="button" class="snext"></button></footer>
+  </div>`;
+  main.querySelectorAll('textarea').forEach(grow);
+  showStep(main.querySelector('.sess'), Math.min(exPos[key] ?? startPos(item, log), item.exercises.length));
+}
+
+function paintDots(sess) {
+  const key = sess.dataset.key, item = itemByKey(key), pos = exPos[key];
+  sess.querySelectorAll('.sdot').forEach((d, i) => {
+    d.dataset.s = statKind(exStatus(item.exercises[i], logs[key]?.ex?.[i]));
+    if (i === pos) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current');
+  });
+}
+
+function summaryHtml(item, log) {
+  const n = item.exercises.length, done = item.exercises.filter((ex, i) => exStatus(ex, log?.ex?.[i]) === '✓').length;
+  return `<div class="ring">${done}/${n}</div>
+    <h1 class="sname">${done === n ? '¡Listo!' : 'Resumen'}</h1>
+    ${log?.confirmed ? '<p class="target">Sesión confirmada.</p>' : '<p class="target">Lo que no tocaste se da por hecho como estaba planificado.</p>'}
+    <ul class="slist">${item.exercises.map((ex, i) => {
+      const l = log?.ex?.[i], st = exStatus(ex, l), kg = l?.sets?.find(s => s?.kg != null)?.kg;
+      // kg solo de lo que hizo: los no tocados traen el peso precargado, no uno elegido.
+      return `<li><button type="button" class="sdot-link" data-to="${i}">${esc(ex.name)}</button>${kg != null && ['done', 'part'].includes(statKind(st)) ? `<span class="target">${esc(kg)} kg</span>` : ''}<span class="exstat" data-s="${statKind(st)}">${st}</span></li>`;
+    }).join('')}</ul>`;
+}
+
+// Cambia de paso sin re-renderizar: los inputs quedan como están y el video que se veía se corta.
+function showStep(sess, to) {
+  const key = sess.dataset.key, item = itemByKey(key), n = item.exercises.length;
+  if (to < 0 || to > n) return;
+  exPos[key] = to;
+  sess.querySelectorAll('.sx').forEach(sx => { sx.hidden = Number(sx.dataset.i) !== to; });
+  sess.querySelectorAll('.vbox').forEach(closeVideo);
+  if (to === n) sess.querySelector('.sum').innerHTML = summaryHtml(item, logs[key]);
+  sess.querySelector('.count').innerHTML = to === n ? 'Resumen' : `Ejercicio <b>${to + 1}</b>/${n}`;
+  sess.querySelector('.snext').innerHTML = to === n ? '✓ Terminé la sesión' : `Hecho, siguiente ${IC.next}`;
+  sess.querySelector('.sprev').disabled = to === 0;
+  sess.querySelector('.sbody').scrollTop = 0;
+  paintDots(sess);
+}
+
+function closeVideo(box) {
+  box.hidden = true;
+  box.innerHTML = '';
+  box.closest('.sx').classList.remove('vid-open');
+  const b = box.previousElementSibling;
+  b.setAttribute('aria-expanded', 'false');
+  b.querySelector('span').textContent = 'Ver video';
 }
 
 // Trote/campo: lista de lectura; tildar pasos queda escondido para cuando no se terminó.
@@ -269,7 +318,7 @@ function itemCard(item, date, dayStage) {
     ${chk('done', log?.done, 'Jugado')}
     <div class="row"><label class="inline">Minutos jugados ${num('minutes', log?.minutes, 'min', 'short')}</label>${pain('pain', log?.pain, 'Dolor durante')}</div>
     ${note('note', log?.note)}`;
-  else if (item.type === 'gym') body = gymBody(item, log, date);
+  else if (item.type === 'gym') body = gymCard(item, log, date);
   else body = stepsBody(item, log);
   return `<section class="card t-${esc(item.type)}" data-key="${esc(key)}">
     <header><h3>${esc(item.title)}</h3>${['run', 'field'].includes(item.type) ? '' : `<span class="prog">${progText(item, log)}</span>`}</header>
@@ -277,7 +326,7 @@ function itemCard(item, date, dayStage) {
     ${badges ? `<div>${badges}</div>` : ''}
     ${item.notes ? `<p class="target"><em>${esc(item.notes)}</em></p>` : ''}
     ${body}
-    ${['gym', 'run', 'field'].includes(item.type) ? `<button type="button" class="done-all${log?.confirmed ? ' on' : ''}">${log?.confirmed ? 'Confirmada ✓ (volver a aplicar)' : '✓ Terminé la sesión'}</button>
+    ${['run', 'field'].includes(item.type) ? `<button type="button" class="done-all${log?.confirmed ? ' on' : ''}">${log?.confirmed ? 'Confirmada ✓ (volver a aplicar)' : '✓ Terminé la sesión'}</button>
       ${log?.confirmed ? '<input type="hidden" data-p="confirmed" data-t="bool" value="true">' : ''}` : ''}
   </section>`;
 }
@@ -508,12 +557,13 @@ async function deleteData() {
 const REASONS = ['no se ve bien', 'otro ejercicio', 'prefiero en español', 'no me sirve'];
 const dialog = document.getElementById('video');
 
-function showVideo(id, msg = '') {
+// En el diálogo (con título y técnica) o, en la sesión, dentro del ejercicio (box = .vbox, solo el video).
+function showVideo(id, msg = '', box = dialog) {
   const pick = P.pickVideo(catalog, id, P.rejectedVideos(logs));
   if (!pick) return;
   const { video: v, exhausted } = pick, e = catalog.exercises[id], name = e.name;
-  dialog.innerHTML = `<form method="dialog" class="vhead"><h3>${esc(name)}</h3><button aria-label="Cerrar">✕</button></form>
-    ${e.cue ? `<p>${esc(e.cue)}</p>` : ''}
+  box.innerHTML = `${box === dialog ? `<form method="dialog" class="vhead"><h3>${esc(name)}</h3><button aria-label="Cerrar">✕</button></form>
+    ${e.cue ? `<p>${esc(e.cue)}</p>` : ''}` : ''}
     ${msg}
     <div class="vframe"><iframe src="https://www.youtube-nocookie.com/embed/${v.id}" title="${esc(v.title ?? name)}" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
     <p class="target">${esc([v.title, v.channel].filter(Boolean).join(' · '))} · <a href="https://www.youtube.com/shorts/${v.id}" target="_blank" rel="noopener">Abrir en YouTube</a></p>
@@ -524,45 +574,51 @@ function showVideo(id, msg = '') {
       <textarea id="vnote" rows="1" placeholder="Nota" aria-label="Nota"></textarea>
       <button type="button" id="vnext">Mostrar otro</button>
     </details>`}`;
-  dialog.querySelector('#vnext')?.addEventListener('click', () => {
+  box.querySelector('#vnext')?.addEventListener('click', () => {
     save(`${P.today()}|_video:${v.id}`, {
       exercise: name, ex: id, video_id: v.id,
-      reason: dialog.querySelector('input[name=reason]:checked')?.value ?? null,
-      note: dialog.querySelector('#vnote').value || null,
+      reason: box.querySelector('input[name=reason]:checked')?.value ?? null,
+      note: box.querySelector('#vnote').value || null,
       created_at: new Date().toISOString(),
     });
-    showVideo(id);
+    showVideo(id, '', box);
   });
-  if (!dialog.open) dialog.showModal();
+  if (box === dialog && !dialog.open) dialog.showModal();
 }
 main.addEventListener('click', e => {
-  const b = e.target.closest('.play');
-  if (b) { e.preventDefault(); showVideo(b.dataset.video); }
-  // Estado del ejercicio: tilda todas las series (o las destilda si ya estaban todas).
-  const st = e.target.closest('.exstat');
-  if (st) {
-    e.preventDefault();
-    const ex = st.closest('.ex'), boxes = [...ex.querySelectorAll('input[data-p$=".done"]')];
-    const on = !boxes.every(c => c.checked);
-    boxes.forEach(c => { c.checked = on; });
-    if (on) ex.querySelector('input[data-p$=".skip"]').checked = false;
-    boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
+  // Sesión de gimnasio: video dentro del ejercicio (en lugar de la técnica), saltar, anterior y siguiente.
+  const sv = e.target.closest('.svid');
+  if (sv) {
+    const box = sv.nextElementSibling;
+    if (!box.hidden) closeVideo(box);
+    else {
+      box.hidden = false;
+      sv.closest('.sx').classList.add('vid-open');
+      sv.setAttribute('aria-expanded', 'true');
+      sv.querySelector('span').textContent = 'Cerrar video';
+      showVideo(sv.dataset.video, '', box);
+    }
   }
-  // Anterior / tocar un número: ir a ese ejercicio.
-  const go = e.target.closest('.exgo, .exdot');
-  if (go) showEx(go.closest('[data-key]'), Number(go.dataset.to));
-  // "Hecho, siguiente": tilda las series que falten (si no lo marcó como "No lo hice") y pasa al próximo.
-  const nx = e.target.closest('.exnext');
-  if (nx) {
-    const ex = nx.closest('.ex'), boxes = [...ex.querySelectorAll('input[data-p$=".done"]')];
+  const sess = e.target.closest('.sess');
+  const go = e.target.closest('.sdot, .sdot-link');
+  if (go) showStep(sess, Number(go.dataset.to));
+  if (e.target.closest('.sprev')) showStep(sess, exPos[sess.dataset.key] - 1);
+  if (e.target.closest('.snext')) {
+    const key = sess.dataset.key, pos = exPos[key], ex = sess.querySelector(`.sx[data-i="${pos}"]`);
+    if (ex.matches('.sum')) {
+      // Terminé la sesión: lo no tocado queda como planificado; vuelve al día con la barra animada.
+      save(key, P.confirmItem(itemByKey(key), serialize(sess)));
+      popKey = key;
+      location.hash = `#/d/${key.slice(0, 10)}`;
+      return;
+    }
+    // "Hecho, siguiente": tilda las series que falten (salvo "No lo hice") y pasa al próximo.
+    const boxes = [...ex.querySelectorAll('input[data-p$=".done"]')];
     if (!ex.querySelector('input[data-p$=".skip"]').checked && boxes.some(c => !c.checked)) {
       boxes.forEach(c => { c.checked = true; });
       boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    const card = nx.closest('[data-key]'), to = Number(nx.dataset.to);
-    // En el último: llevar a "Terminé la sesión".
-    if (to < card.querySelectorAll('section.ex').length) showEx(card, to);
-    else card.querySelector('.done-all')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    showStep(sess, pos + 1);
   }
   if (e.target.id === 'seen') { ls.set('seenChange', e.target.dataset.at); e.target.closest('.changes').remove(); }
   if (e.target.matches('.done-all')) {
@@ -883,6 +939,9 @@ function renderLogin(msg = '') {
 
 function route() {
   const h = location.hash.slice(1) || '/';
+  // Sesión de gimnasio: pantalla completa, sin barra de arriba ni pestañas.
+  const g = user && plan && /^\/g\/(\d{4}-\d{2}-\d{2})\/(.+)$/.exec(h);
+  document.body.classList.toggle('in-sess', !!g);
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (/^\/[ds]\//.test(h) ? '/' : h)));
   document.getElementById('tabs').hidden = !user;
   if (!user) return renderLogin();
@@ -891,6 +950,7 @@ function route() {
   if (!plan || h === '/plan') return renderPlan();
   if (h === '/analisis') return renderAnalysis();
   if (h === '/imprimir') return renderPrint();
+  if (g) return renderSession(g[1], decodeURIComponent(g[2]));
   const m = /^\/([ds])\/(\d{4}-\d{2}-\d{2})$/.exec(h);
   if (m ? m[1] === 's' : ls.get('view', 'hoy') === 'semana') return renderWeek(m ? m[2] : P.today());
   renderDay(m ? m[2] : P.today());

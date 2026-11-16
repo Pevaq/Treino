@@ -205,25 +205,14 @@ button.done-all {
   width: 100%; min-height: 52px; margin: 12px 0 0; font-size: 19px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
 button.done-all.on { background: var(--surface-2); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-/* Gimnasio de a un ejercicio: números arriba para saltar, Anterior / Hecho, siguiente abajo */
-.exnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
-.exnav .lbl { margin: 0; color: var(--muted); }
-.exnav .lbl b { color: var(--text); }
-.exdots { display: flex; gap: 6px; flex-wrap: wrap; }
-button.exdot {
-  width: 36px; height: 36px; min-height: 36px; padding: 0; margin: 0; border-radius: 99px;
-  background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--cond); font-size: 16px;
-}
-button.exdot[data-s=done] { background: var(--accent); color: var(--on-accent); box-shadow: none; }
-button.exdot[data-s=part] { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
-button.exdot[data-s=skip] { text-decoration: line-through; }
-button.exdot[aria-current] { outline: 2px solid var(--text); outline-offset: 2px; }
-section.ex { padding: 10px 0 4px; }
-.exhead { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 2px 8px; margin-bottom: 6px; }
-.exhead .exname { margin: 0; font-size: 22px; line-height: 1.15; font-family: var(--cond); font-weight: 700; min-width: 0; overflow-wrap: anywhere; grid-row: 1; }
-.exhead :is(.exstat, .play) { grid-row: 1; }
-.exhead .target { margin: 0; grid-row: 2; grid-column: 1 / -1; font-size: 14px; }
-section.ex:has(.exstat[data-s=skip]) .exname { text-decoration: line-through; color: var(--muted); }
+/* Gimnasio en la card del día: lista corta + Empezar sesión */
+.exlist { list-style: none; margin: 4px 0 12px; padding: 0; }
+.exlist li { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
+.exlist .exname { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.exlist .target { margin: 0; grid-column: 1; font-size: 13px; }
+.exlist .exstat { grid-row: 1 / 3; grid-column: 2; }
+.exlist li.more { display: block; color: var(--muted); font-size: 14px; }
+.exlist li:has(.exstat[data-s=skip]) .exname { text-decoration: line-through; color: var(--muted); }
 .exstat {
   min-width: 34px; text-align: center; font-size: 15px; font-weight: 600; white-space: nowrap;
   padding: 1px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted);
@@ -231,23 +220,85 @@ section.ex:has(.exstat[data-s=skip]) .exname { text-decoration: line-through; co
 .exstat[data-s=done] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .exstat[data-s=part] { border-color: var(--warn); color: var(--warn); }
 .exstat[data-s=skip] { text-decoration: line-through; }
-button.exstat { background: none; margin: 0; min-height: 44px; min-width: 52px; cursor: pointer; }
-button.exstat[data-s=done] { background: var(--accent); }
 .exstat[data-s=none] { font-size: 0; }
-.exstat[data-s=none]::after { content: '✓'; font-size: 15px; }
-.exhead .play {
-  display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: 0;
-  border-radius: 99px; background: var(--surface-2); color: var(--accent);
+.exstat[data-s=none]::after { content: '–'; font-size: 15px; }
+a.button.start {
+  background: var(--accent); color: var(--on-accent); border: 0;
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 56px; margin: 0;
+  font-family: var(--cond); font-size: 21px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
-.play .ic { fill: currentColor; stroke-width: 1.5; width: 16px; height: 16px; }
-/* En el gimnasio lo que queda fijo abajo es Anterior / Hecho, siguiente; "Terminé la sesión" va al final de la card. */
-.exmove {
-  display: grid; grid-template-columns: auto 1fr; gap: 8px; margin-top: 8px; padding: 8px 0;
-  position: sticky; bottom: calc(var(--tabs) + env(safe-area-inset-bottom)); z-index: 1; background: var(--surface);
+a.button.start .ic { fill: currentColor; stroke-width: 1.5; }
+
+/* Sesión de gimnasio a pantalla completa: sin barra de arriba ni pestañas, sin scroll de página */
+body.in-sess { padding-bottom: 0; }
+body.in-sess :is(.top, #tabs) { display: none; }
+body.in-sess main { padding: 0; }
+.sess { height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+.sbar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; padding: 10px 12px 2px; }
+.sclose { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 99px; background: var(--surface-2); color: var(--muted); text-decoration: none; font-size: 18px; }
+.sbar .count { margin: 0; text-align: center; font: 700 18px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.sbar .count b { color: var(--text); font-size: 22px; }
+.sdots { display: flex; gap: 4px; padding: 0 16px; }
+button.sdot { flex: 1; height: 22px; min-height: 0; margin: 0; padding: 0; background: none; display: flex; align-items: center; }
+.sdot i { display: block; width: 100%; height: 5px; border-radius: 2px; background: var(--surface-2); }
+.sdot[data-s=done] i { background: var(--accent); }
+.sdot[data-s=part] i { background: var(--warn); }
+.sdot[data-s=skip] i { background: var(--muted); }
+.sdot[aria-current] i { box-shadow: 0 0 0 2px var(--text); }
+.sbody { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 20px 8px; }
+.sx { display: flex; flex-direction: column; gap: 12px; }
+.sx[hidden] { display: none; }
+.sname { margin: 4px 0 0; font: 700 40px/1 var(--cond); text-transform: uppercase; overflow-wrap: anywhere; }
+.schips { display: flex; flex-wrap: wrap; gap: 6px; }
+.schip { font: 600 17px var(--cond); letter-spacing: .03em; padding: 3px 11px; border-radius: 99px; background: var(--surface-2); }
+.schip.a { background: var(--accent); color: var(--on-accent); }
+.how { margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.how b { display: block; font: 600 12px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.sx.vid-open .how { display: none; }
+button.svid {
+  display: flex; align-items: center; gap: 10px; width: 100%; margin: 0; padding: 10px 12px;
+  background: none; color: var(--accent); box-shadow: inset 0 0 0 1px var(--line); text-align: left;
 }
-.t-gym button.done-all { position: static; }
-.exmove button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; margin: 0; }
-button.exgo { background: none; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+button.svid .ic { fill: currentColor; stroke-width: 1.5; width: 16px; height: 16px; }
+.vbox .vframe { max-height: 28dvh; }
+/* Con el video abierto, las series se achican para que siga entrando sin scroll. */
+.sx.vid-open { gap: 8px; }
+.sx.vid-open .set { padding: 2px 8px; }
+.sx.vid-open .minor { display: none; }
+.sx.vid-open .f { height: 34px; }
+.sx.vid-open .f input { height: 32px; }
+.vbox .target { margin: 6px 0 0; font-size: 12px; }
+.sets { display: flex; flex-direction: column; gap: 6px; }
+.sess .set { display: grid; grid-template-columns: 40px 1fr 1fr; gap: 8px; align-items: center; background: var(--surface); border-radius: 10px; padding: 5px 8px; }
+.ck { position: relative; display: grid; place-items: center; width: 36px; height: 36px; cursor: pointer; }
+.ck input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.ck span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 2px solid var(--line); font: 700 16px var(--cond); color: var(--muted); }
+.ck input:checked + span { background: var(--accent); border-color: var(--accent); color: transparent; }
+.ck input:checked + span::after { content: '✓'; color: var(--on-accent); position: absolute; font-size: 17px; }
+.ck input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sess .f { display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; height: 40px; }
+.sess .f input { flex: 1; min-width: 0; width: 100%; background: none; border: 0; padding: 0; font-size: 20px; height: 38px; }
+.sess .f small { color: var(--muted); font-size: 12px; }
+.sess .f:focus-within { border-color: var(--accent); }
+.minor { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; font-size: 14px; color: var(--muted); }
+.minor .chk { min-height: 40px; }
+.minor label.inline { margin: 0; }
+.minor details { flex-basis: 100%; }
+.minor summary { min-height: 40px; display: flex; align-items: center; }
+.sfoot { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.sfoot button { margin: 0; min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+button.sprev { background: var(--surface-2); color: var(--text); }
+button.snext { font: 700 22px var(--cond); text-transform: uppercase; letter-spacing: .06em; }
+/* Resumen */
+.sx.sum { align-items: center; text-align: center; gap: 8px; padding-top: 6px; }
+.ring { display: grid; place-items: center; width: 92px; height: 92px; border-radius: 99px; border: 5px solid var(--accent); font: 700 32px var(--cond); color: var(--accent); }
+.sum .sname { font-size: 48px; margin: 0; }
+.sum > .target { margin: 0 0 4px; }
+.slist { list-style: none; padding: 0; margin: 0; width: 100%; text-align: left; }
+.slist li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 0 10px; border-top: 1px solid var(--line); }
+.slist .target { margin: 0; font-size: 13px; }
+button.sdot-link { background: none; color: var(--text); margin: 0; padding: 6px 0; min-height: 40px; text-align: left; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+
 /* Trote/campo: lectura + detalle de excepción */
 .read { margin: 4px 0 8px; padding-left: 22px; }
 .read li { padding: 4px 0; }

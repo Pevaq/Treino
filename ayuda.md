@@ -3,13 +3,14 @@
 ## Lo básico
 - **Hoy** muestra lo que te toca: gimnasio, trote, campo o lo que tengas que tildar. Un día vacío es descanso.
 - Cuando termines, tocá **✓ Terminé la sesión**. Todo lo que no tocaste se da por hecho tal como estaba planificado.
-- En el gimnasio ves **un ejercicio por vez**. **Hecho, siguiente** tilda sus series y pasa al próximo; **Anterior** vuelve. Los números de arriba saltan a cualquier ejercicio y se pintan a medida que los completás.
+- En el gimnasio tocá **Empezar sesión**: se abre a pantalla completa, un ejercicio por vez, con cómo hacerlo y las series. **Hecho, siguiente** tilda sus series y pasa al próximo; **‹** vuelve. La barrita de arriba salta a cualquier ejercicio y se pinta a medida que avanzás. Con **✕** salís sin perder nada: al volver, seguís donde estabas.
+- Después del último ejercicio ves un resumen: tocá un ejercicio para corregirlo, o **Terminé la sesión** para cerrarla.
 - Si algo fue distinto, cambialo en ese ejercicio:
-  - **kg para todas** cambia el peso de todas las series.
+  - **kg todas** cambia el peso de todas las series.
   - Tildá solo las series que hiciste y cargá las reps de la última.
   - **No lo hice** marca el ejercicio como salteado.
 - En trote y campo: si no completaste la sesión, tocá **No la terminé / me frené** y marcá hasta dónde llegaste.
-- El ▶ al lado de cada ejercicio muestra un video corto de cómo se hace.
+- **Ver video** muestra un video corto de cómo se hace, en lugar del texto; si no te sirve, **Otro video**.
 
 ## Rutinas
 - **Crear una rutina a mano:** en Rutina → Crear rutina. Elegís el día, agregás ejercicios del catálogo, que ya traen series y reps sugeridas, y ajustás lo que quieras. Con **Repetir** la copiás en los días y semanas que elijas.
