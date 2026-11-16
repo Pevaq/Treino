@@ -3,12 +3,13 @@
 ## Lo básico
 - **Hoy** muestra lo que te toca: gimnasio, trote, campo o lo que tengas que tildar. Un día vacío es descanso.
 - Cuando termines, tocá **✓ Terminé la sesión**. Todo lo que no tocaste se da por hecho tal como estaba planificado.
-- En el gimnasio tocá **Empezar sesión**: se abre a pantalla completa, un ejercicio por vez, con cómo hacerlo y las series. **Hecho, siguiente** tilda sus series y pasa al próximo; **‹** vuelve. La barrita de arriba salta a cualquier ejercicio y se pinta a medida que avanzás. Con **✕** salís sin perder nada: al volver, seguís donde estabas.
+- En el gimnasio tocá **Empezar sesión**: se abre a pantalla completa, un ejercicio por vez, con las series, el peso y cómo hacerlo. No hace falta tocar nada entre serie y serie: al terminar el ejercicio tocá **Hecho, siguiente** y queda completo. **‹** vuelve. La barrita de arriba salta a cualquier ejercicio y se pinta a medida que avanzás. Con **✕** salís sin perder nada: al volver, seguís donde estabas.
+- Si algo fue distinto, antes de **Hecho, siguiente** abrí **Hice algo distinto**:
+  - **Series hechas** (− / +) si hiciste menos series.
+  - **kg todas** cambia el peso de todas las series; abajo podés cambiar reps y kg de una serie en particular.
+  - Arriba queda la línea **Hiciste: …** con lo que cargaste.
+- **No lo hice** marca el ejercicio como salteado.
 - Después del último ejercicio ves un resumen: tocá un ejercicio para corregirlo, o **Terminé la sesión** para cerrarla.
-- Si algo fue distinto, cambialo en ese ejercicio:
-  - **kg todas** cambia el peso de todas las series.
-  - Tildá solo las series que hiciste y cargá las reps de la última.
-  - **No lo hice** marca el ejercicio como salteado.
 - En trote y campo: si no completaste la sesión, tocá **No la terminé / me frené** y marcá hasta dónde llegaste.
 - **Ver video** muestra un video corto de cómo se hace, en lugar del texto; si no te sirve, **Otro video**.
 

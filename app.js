@@ -119,7 +119,7 @@ function onEdit(e) {
   if (prog) prog.textContent = progText(item, logs[key]);
   card.querySelector('.segs')?.replaceWith(...tpl(segs(item, logs[key])));
   if (item?.type === 'gym') {
-    if (card.matches('.sess')) paintDots(card);
+    if (card.matches('.sess')) { paintDots(card); const sec = e.target.closest('.sx'); if (sec?.querySelector('.did')) paintDid(sec); }
   }
   if (e.target.matches('textarea')) grow(e.target);
 }
@@ -194,6 +194,8 @@ function gymCard(item, log, date) {
   <a class="button start" href="#/g/${date}/${encodeURIComponent(item.id)}">${log?.confirmed ? 'Ver sesión' : `${IC.play} ${started ? 'Seguir sesión' : 'Empezar sesión'}`}</a>`;
 }
 
+// Pantalla informativa: no se tilda nada serie por serie. "Hecho, siguiente" marca hechas las series del
+// contador (todas si no se tocó). "Hice algo distinto" despliega el contador y reps/kg por serie.
 function sessionEx(ex, i, log, date) {
   const l = log?.ex?.[i], id = P.exId(catalog, ex), cat = catalog?.exercises?.[id];
   const last = P.lastWeight(logs, { ex: id, name: ex.name }, date);
@@ -202,28 +204,54 @@ function sessionEx(ex, i, log, date) {
   const chips = exerciseTarget(ex).split(' · ');
   if (!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly) chips.splice(1, 0, `${esc(kgShown)} kg`);
   const how = [cat?.cue, ex.notes].filter(Boolean).map(esc).join(' ');
+  const done = sets.filter((_, j) => l?.sets?.[j]?.done).length;
   const rows = sets.map((s, j) => {
     const sl = l?.sets?.[j], timed = s.reps == null && s.time;
     const reps = sl?.reps ?? (s.reps != null ? parseInt(s.reps) || null : null);
-    return `<div class="set">
-      <label class="ck"><input type="checkbox" data-p="ex.${i}.sets.${j}.done" ${sl?.done ? 'checked' : ''} aria-label="Serie ${j + 1}"><span>${j + 1}</span></label>
+    return `<div class="set"><input type="checkbox" hidden data-p="ex.${i}.sets.${j}.done" ${sl?.done ? 'checked' : ''}>
+      <span class="sn">Serie ${j + 1}</span>
       ${timed ? `<span class="f">${esc(s.time)}</span>` : `<label class="f">${num(`ex.${i}.sets.${j}.reps`, reps, 'reps')}<small>reps</small></label>
       <label class="f">${num(`ex.${i}.sets.${j}.kg`, sl?.kg ?? s.weight ?? last, 'kg')}<small>kg</small></label>`}
     </div>`;
   }).join('');
+  const changed = (done > 0 && done < sets.length) || l?.sets?.some((sl, j) => sl && ((sl.kg != null && sl.kg !== (sets[j].weight ?? last)) || (sl.reps != null && sl.reps !== (parseInt(sets[j].reps) || null))));
   return `<section class="sx ex" data-i="${i}" hidden>
     <h1 class="sname">${esc(ex.name)}</h1>
     <div class="schips">${chips.map((c, k) => `<span class="schip${k ? '' : ' a'}">${c}</span>`).join('')}</div>
+    <p class="did" ${changed ? '' : 'hidden'}></p>
     ${how ? `<p class="how"><b>Cómo hacerlo</b>${how}</p>` : ''}
     ${cat?.videos?.length ? `<button type="button" class="svid" data-video="${esc(id)}" aria-expanded="false">${IC.play}<span>Ver video</span></button><div class="vbox" hidden></div>` : ''}
-    <div class="sets">${rows}</div>
+    <details class="adjust"><summary>Hice algo distinto</summary>
+      <div class="row compact">
+        <span class="inline">Series hechas</span>
+        <span class="stepper"><button type="button" class="sminus" aria-label="Una serie menos">−</button><output class="ndone">${done || sets.length}</output><button type="button" class="splus" aria-label="Una serie más">+</button></span>
+        <span class="inline">de ${sets.length}</span>
+      </div>
+      ${timedOnly ? '' : `<label class="inline">kg todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
+      <div class="sets">${rows}</div>
+    </details>
     <div class="minor">
       ${chk(`ex.${i}.skip`, l?.skip, 'No lo hice')}
-      ${timedOnly ? '' : `<label class="inline">kg todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
       <details ${l?.note || l?.pain != null ? 'open' : ''}><summary>Nota / dolor</summary>${pain(`ex.${i}.pain`, l?.pain)}${note(`ex.${i}.note`, l?.note)}</details>
     </div>
     <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
   </section>`;
+}
+
+// Marca hechas las primeras n series del ejercicio (las demás no) y guarda.
+function setDone(sec, n) {
+  const boxes = [...sec.querySelectorAll('input[data-p$=".done"]')];
+  boxes.forEach((c, j) => { c.checked = j < n; });
+  boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+// Línea "Hiciste: 3 de 4 · 35 kg": visible si ya había cambios o en cuanto se toca el desplegable.
+function paintDid(sec) {
+  const n = Number(sec.querySelector('.ndone').textContent), total = sec.querySelectorAll('.set').length;
+  const kgs = [...new Set([...sec.querySelectorAll('.set input[data-p$=".kg"]')].slice(0, n).map(x => x.value).filter(Boolean))];
+  const did = sec.querySelector('.did');
+  did.textContent = `Hiciste: ${n < total ? `${n} de ${total} series` : 'todas las series'}${kgs.length ? ` · ${kgs.join(' / ')} kg` : ''}`;
+  if (sec.querySelector('.adjust').open) did.hidden = false;
 }
 
 function renderSession(date, id) {
@@ -238,6 +266,7 @@ function renderSession(date, id) {
     <footer class="sfoot"><button type="button" class="sprev" aria-label="Anterior">${IC.prev}</button><button type="button" class="snext"></button></footer>
   </div>`;
   main.querySelectorAll('textarea').forEach(grow);
+  main.querySelectorAll('.did:not([hidden])').forEach(d => paintDid(d.closest('.sx')));
   showStep(main.querySelector('.sess'), Math.min(exPos[key] ?? startPos(item, log), item.exercises.length));
 }
 
@@ -255,9 +284,10 @@ function summaryHtml(item, log) {
     <h1 class="sname">${done === n ? '¡Listo!' : 'Resumen'}</h1>
     ${log?.confirmed ? '<p class="target">Sesión confirmada.</p>' : '<p class="target">Lo que no tocaste se da por hecho como estaba planificado.</p>'}
     <ul class="slist">${item.exercises.map((ex, i) => {
-      const l = log?.ex?.[i], st = exStatus(ex, l), kg = l?.sets?.find(s => s?.kg != null)?.kg;
-      // kg solo de lo que hizo: los no tocados traen el peso precargado, no uno elegido.
-      return `<li><button type="button" class="sdot-link" data-to="${i}">${esc(ex.name)}</button>${kg != null && ['done', 'part'].includes(statKind(st)) ? `<span class="target">${esc(kg)} kg</span>` : ''}<span class="exstat" data-s="${statKind(st)}">${st}</span></li>`;
+      const l = log?.ex?.[i], st = exStatus(ex, l);
+      // kg solo de las series hechas: las no tocadas traen el peso precargado, no uno elegido.
+      const kgs = [...new Set((l?.sets ?? []).filter(s => s?.done && s.kg != null).map(s => s.kg))];
+      return `<li><button type="button" class="sdot-link" data-to="${i}">${esc(ex.name)}</button>${kgs.length ? `<span class="target">${esc(kgs.join(' / '))} kg</span>` : ''}<span class="exstat" data-s="${statKind(st)}">${st}</span></li>`;
     }).join('')}</ul>`;
 }
 
@@ -268,6 +298,7 @@ function showStep(sess, to) {
   exPos[key] = to;
   sess.querySelectorAll('.sx').forEach(sx => { sx.hidden = Number(sx.dataset.i) !== to; });
   sess.querySelectorAll('.vbox').forEach(closeVideo);
+  sess.querySelectorAll('details.adjust').forEach(d => { d.open = false; });
   if (to === n) sess.querySelector('.sum').innerHTML = summaryHtml(item, logs[key]);
   sess.querySelector('.count').innerHTML = to === n ? 'Resumen' : `Ejercicio <b>${to + 1}</b>/${n}`;
   sess.querySelector('.snext').innerHTML = to === n ? '✓ Terminé la sesión' : `Hecho, siguiente ${IC.next}`;
@@ -603,6 +634,14 @@ main.addEventListener('click', e => {
   const go = e.target.closest('.sdot, .sdot-link');
   if (go) showStep(sess, Number(go.dataset.to));
   if (e.target.closest('.sprev')) showStep(sess, exPos[sess.dataset.key] - 1);
+  const pm = e.target.closest('.sminus, .splus');
+  if (pm) {
+    const sec = pm.closest('.sx'), out = sec.querySelector('.ndone'), total = sec.querySelectorAll('.set').length;
+    const n = Math.min(total, Math.max(0, Number(out.textContent) + (pm.matches('.splus') ? 1 : -1)));
+    out.textContent = n;
+    setDone(sec, n);
+    paintDid(sec);
+  }
   if (e.target.closest('.snext')) {
     const key = sess.dataset.key, pos = exPos[key], ex = sess.querySelector(`.sx[data-i="${pos}"]`);
     if (ex.matches('.sum')) {
@@ -612,12 +651,8 @@ main.addEventListener('click', e => {
       location.hash = `#/d/${key.slice(0, 10)}`;
       return;
     }
-    // "Hecho, siguiente": tilda las series que falten (salvo "No lo hice") y pasa al próximo.
-    const boxes = [...ex.querySelectorAll('input[data-p$=".done"]')];
-    if (!ex.querySelector('input[data-p$=".skip"]').checked && boxes.some(c => !c.checked)) {
-      boxes.forEach(c => { c.checked = true; });
-      boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    // "Hecho, siguiente": quedan hechas las series del contador (todas si no se tocó), salvo "No lo hice".
+    if (!ex.querySelector('input[data-p$=".skip"]').checked) setDone(ex, Number(ex.querySelector('.ndone').textContent));
     showStep(sess, pos + 1);
   }
   if (e.target.id === 'seen') { ls.set('seenChange', e.target.dataset.at); e.target.closest('.changes').remove(); }

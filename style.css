@@ -263,19 +263,24 @@ button.svid .ic { fill: currentColor; stroke-width: 1.5; width: 16px; height: 16
 .vbox .vframe { max-height: 28dvh; }
 /* Con el video abierto, las series se achican para que siga entrando sin scroll. */
 .sx.vid-open { gap: 8px; }
-.sx.vid-open .set { padding: 2px 8px; }
-.sx.vid-open .minor { display: none; }
+.sx.vid-open :is(.minor, details.adjust) { display: none; }
 .sx.vid-open .f { height: 34px; }
 .sx.vid-open .f input { height: 32px; }
 .vbox .target { margin: 6px 0 0; font-size: 12px; }
 .sets { display: flex; flex-direction: column; gap: 6px; }
-.sess .set { display: grid; grid-template-columns: 40px 1fr 1fr; gap: 8px; align-items: center; background: var(--surface); border-radius: 10px; padding: 5px 8px; }
-.ck { position: relative; display: grid; place-items: center; width: 36px; height: 36px; cursor: pointer; }
-.ck input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-.ck span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 2px solid var(--line); font: 700 16px var(--cond); color: var(--muted); }
-.ck input:checked + span { background: var(--accent); border-color: var(--accent); color: transparent; }
-.ck input:checked + span::after { content: '✓'; color: var(--on-accent); position: absolute; font-size: 17px; }
-.ck input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sess .set { display: grid; grid-template-columns: 64px 1fr 1fr; gap: 8px; align-items: center; }
+.sess .set .sn { font-size: 14px; color: var(--muted); }
+/* "Hice algo distinto": contador de series hechas, kg para todas y reps/kg por serie */
+details.adjust { border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; }
+details.adjust > summary { min-height: 46px; display: flex; align-items: center; color: var(--text); font-weight: 600; }
+details.adjust[open] { padding-bottom: 12px; }
+details.adjust .row.compact { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+details.adjust .inline { margin: 0; color: var(--muted); font-size: 14px; }
+details.adjust .sets { margin-top: 8px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 99px; }
+.stepper button { width: 44px; height: 40px; min-height: 0; margin: 0; padding: 0; background: none; color: var(--text); font-size: 20px; }
+.stepper output { min-width: 2ch; text-align: center; font: 700 22px var(--cond); }
+.did { margin: 0; color: var(--warn); font-weight: 600; }
 .sess .f { display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; height: 40px; }
 .sess .f input { flex: 1; min-width: 0; width: 100%; background: none; border: 0; padding: 0; font-size: 20px; height: 38px; }
 .sess .f small { color: var(--muted); font-size: 12px; }
