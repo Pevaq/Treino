@@ -201,8 +201,6 @@ function sessionEx(ex, i, log, date) {
   const last = P.lastWeight(logs, { ex: id, name: ex.name }, date);
   const sets = P.setsOf(ex), timedOnly = sets.every(s => s.reps == null && s.time);
   const kgShown = l?.sets?.find(s => s?.kg != null)?.kg ?? ex.weight ?? last;
-  const chips = exerciseTarget(ex).split(' · ');
-  if (!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly) chips.splice(1, 0, `${esc(kgShown)} kg`);
   const how = [cat?.cue, ex.notes].filter(Boolean).map(esc).join(' ');
   const done = sets.filter((_, j) => l?.sets?.[j]?.done).length;
   const rows = sets.map((s, j) => {
@@ -217,7 +215,7 @@ function sessionEx(ex, i, log, date) {
   const changed = (done > 0 && done < sets.length) || l?.sets?.some((sl, j) => sl && ((sl.kg != null && sl.kg !== (sets[j].weight ?? last)) || (sl.reps != null && sl.reps !== (parseInt(sets[j].reps) || null))));
   return `<section class="sx ex" data-i="${i}" hidden>
     <h1 class="sname">${esc(ex.name)}</h1>
-    <div class="schips">${chips.map((c, k) => `<span class="schip${k ? '' : ' a'}">${c}</span>`).join('')}</div>
+    ${scoreboard(ex, sets, kgShown)}
     <p class="did" ${changed ? '' : 'hidden'}></p>
     ${how ? `<p class="how"><b>Cómo hacerlo</b>${how}</p>` : ''}
     ${cat?.videos?.length ? `<button type="button" class="svid" data-video="${esc(id)}" aria-expanded="false">${IC.play}<span>Ver video</span></button><div class="vbox" hidden></div>` : ''}
@@ -236,6 +234,22 @@ function sessionEx(ex, i, log, date) {
     </div>
     <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
   </section>`;
+}
+
+// Lo planificado bien grande, como un tablero: SERIES · REPS (o TIEMPO) · KG. Si las series son distintas
+// entre sí (pirámide), una caja por serie. Debajo, descanso y "por lado".
+function scoreboard(ex, sets, kg) {
+  const cell = (label, v, cls = '') => `<div class="${cls}"><span class="lbl">${label}</span><b${String(v).length > 4 ? ' class="long"' : ''}>${esc(v)}</b></div>`;
+  const what = s => s.reps != null ? s.reps : s.time;
+  const extra = [ex.rest && `Descanso <b>${esc(ex.rest)}</b> entre series`, ex.per_side && 'por lado'].filter(Boolean).join(' · ');
+  let board;
+  if (Array.isArray(ex.sets)) {
+    board = `<div class="perset" style="--n:${sets.length}">${sets.map((s, j) => `<div><span class="lbl">Serie ${j + 1}</span><b>${esc(what(s))}</b>${s.weight != null ? `<i>${esc(s.weight)} kg</i>` : ''}</div>`).join('')}</div>`;
+  } else {
+    const s = sets[0];
+    board = `<div class="score">${cell('Series', sets.length)}${s.reps != null ? cell('Reps', s.reps) : cell('Tiempo', s.time ?? '–')}${s.reps != null && kg != null ? cell('Kg', kg, 'k') : ''}</div>`;
+  }
+  return board + (extra ? `<p class="rest">${extra}</p>` : '');
 }
 
 // Marca hechas las primeras n series del ejercicio (las demás no) y guarda.

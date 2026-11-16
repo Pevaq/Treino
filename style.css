@@ -249,9 +249,20 @@ button.sdot { flex: 1; height: 22px; min-height: 0; margin: 0; padding: 0; backg
 .sx { display: flex; flex-direction: column; gap: 12px; }
 .sx[hidden] { display: none; }
 .sname { margin: 4px 0 0; font: 700 40px/1 var(--cond); text-transform: uppercase; overflow-wrap: anywhere; }
-.schips { display: flex; flex-wrap: wrap; gap: 6px; }
-.schip { font: 600 17px var(--cond); letter-spacing: .03em; padding: 3px 11px; border-radius: 99px; background: var(--surface-2); }
-.schip.a { background: var(--accent); color: var(--on-accent); }
+/* Tablero de lo planificado: números grandes con su rótulo; el peso en celeste */
+.score { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; background: var(--surface); border-radius: 14px; overflow: hidden; }
+.score > div, .perset > div { padding: 10px 4px 8px; text-align: center; min-width: 0; }
+.score > div + div { border-left: 1px solid var(--line); }
+.score .lbl, .perset .lbl { display: block; margin: 0; font-size: 12px; letter-spacing: .14em; }
+.score b { display: block; font: 700 58px/1 var(--cond); font-variant-numeric: tabular-nums; text-transform: none; }
+.score b.long { font-size: 40px; line-height: 58px; }
+.score .k b { color: var(--accent); }
+.perset { display: grid; grid-template-columns: repeat(min(var(--n), 4), 1fr); gap: 8px; }
+.perset > div { background: var(--surface); border-radius: 12px; }
+.perset b { display: block; font: 700 40px/1 var(--cond); }
+.perset i { display: block; font: 700 20px var(--cond); font-style: normal; color: var(--accent); }
+.sess .rest { margin: -4px 0 0; color: var(--muted); font-size: 14px; }
+.sess .rest b { color: var(--text); font-family: var(--cond); font-size: 17px; }
 .how { margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .how b { display: block; font: 600 12px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .sx.vid-open .how { display: none; }
