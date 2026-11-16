@@ -250,13 +250,13 @@ button.sdot { flex: 1; height: 22px; min-height: 0; margin: 0; padding: 0; backg
 .sx[hidden] { display: none; }
 .sname { margin: 4px 0 0; font: 700 40px/1 var(--cond); text-transform: uppercase; overflow-wrap: anywhere; }
 /* Tablero de lo planificado: números grandes con su rótulo; el peso en celeste */
-.score { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; background: var(--surface); border-radius: 14px; overflow: hidden; }
-.score > div, .perset > div { padding: 10px 4px 8px; text-align: center; min-width: 0; }
-.score > div + div { border-left: 1px solid var(--line); }
-.score .lbl, .perset .lbl { display: block; margin: 0; font-size: 12px; letter-spacing: .14em; }
-.score b { display: block; font: 700 58px/1 var(--cond); font-variant-numeric: tabular-nums; text-transform: none; }
-.score b.long { font-size: 40px; line-height: 58px; }
-.score .k b { color: var(--accent); }
+.board { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; background: var(--surface); border-radius: 14px; overflow: hidden; }
+.board > div, .perset > div { padding: 10px 4px 8px; text-align: center; min-width: 0; }
+.board > div + div { border-left: 1px solid var(--line); }
+.board .lbl, .perset .lbl { display: block; margin: 0; font-size: 12px; letter-spacing: .14em; }
+.board b { display: block; font: 700 58px/1 var(--cond); font-variant-numeric: tabular-nums; }
+.board b.long { font-size: 40px; line-height: 58px; }
+.board .k b { color: var(--accent); }
 .perset { display: grid; grid-template-columns: repeat(min(var(--n), 4), 1fr); gap: 8px; }
 .perset > div { background: var(--surface); border-radius: 12px; }
 .perset b { display: block; font: 700 40px/1 var(--cond); }

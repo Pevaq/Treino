@@ -187,11 +187,12 @@ const startPos = (item, log) => { const i = item.exercises.findIndex((ex, j) => 
 function gymCard(item, log, date) {
   const started = item.exercises.some((ex, i) => exStatus(ex, log?.ex?.[i]) !== '—');
   const more = item.exercises.length - 4;
-  return `<ul class="exlist">${item.exercises.slice(0, more > 1 ? 4 : 5).map((ex, i) => {
+  const list = `<ul class="exlist">${item.exercises.slice(0, more > 1 ? 4 : 5).map((ex, i) => {
     const st = exStatus(ex, log?.ex?.[i]);
     return `<li><span class="exname">${esc(ex.name)}</span><span class="target">${exerciseTarget(ex)}</span><span class="exstat" data-s="${statKind(st)}">${st}</span></li>`;
-  }).join('')}${more > 1 ? `<li class="more">+ ${more} ejercicios más</li>` : ''}</ul>
-  <a class="button start" href="#/g/${date}/${encodeURIComponent(item.id)}">${log?.confirmed ? 'Ver sesión' : `${IC.play} ${started ? 'Seguir sesión' : 'Empezar sesión'}`}</a>`;
+  }).join('')}${more > 1 ? `<li class="more">+ ${more} ejercicios más</li>` : ''}</ul>`;
+  const label = log?.confirmed ? 'Ver sesión' : startPos(item, log) === item.exercises.length ? 'Terminar sesión' : `${IC.play} ${started ? 'Seguir sesión' : 'Empezar sesión'}`;
+  return `${list}<a class="button start" href="#/g/${date}/${encodeURIComponent(item.id)}">${label}</a>`;
 }
 
 // Pantalla informativa: no se tilda nada serie por serie. "Hecho, siguiente" marca hechas las series del
@@ -247,7 +248,7 @@ function scoreboard(ex, sets, kg) {
     board = `<div class="perset" style="--n:${sets.length}">${sets.map((s, j) => `<div><span class="lbl">Serie ${j + 1}</span><b>${esc(what(s))}</b>${s.weight != null ? `<i>${esc(s.weight)} kg</i>` : ''}</div>`).join('')}</div>`;
   } else {
     const s = sets[0];
-    board = `<div class="score">${cell('Series', sets.length)}${s.reps != null ? cell('Reps', s.reps) : cell('Tiempo', s.time ?? '–')}${s.reps != null && kg != null ? cell('Kg', kg, 'k') : ''}</div>`;
+    board = `<div class="board">${cell('Series', sets.length)}${s.reps != null ? cell('Reps', s.reps) : cell('Tiempo', s.time ?? '–')}${s.reps != null && kg != null ? cell('Kg', kg, 'k') : ''}</div>`;
   }
   return board + (extra ? `<p class="rest">${extra}</p>` : '');
 }
