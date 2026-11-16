@@ -205,16 +205,25 @@ button.done-all {
   width: 100%; min-height: 52px; margin: 12px 0 0; font-size: 19px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
 button.done-all.on { background: var(--surface-2); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-details.ex { padding: 0; border-top: 1px solid var(--line); }
-details.ex > summary {
-  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 2px 8px; padding: 10px 0; min-height: 56px;
-  color: var(--text); font-size: 15px; list-style: none;
+/* Gimnasio de a un ejercicio: números arriba para saltar, Anterior / Hecho, siguiente abajo */
+.exnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
+.exnav .lbl { margin: 0; color: var(--muted); }
+.exnav .lbl b { color: var(--text); }
+.exdots { display: flex; gap: 6px; flex-wrap: wrap; }
+button.exdot {
+  width: 36px; height: 36px; min-height: 36px; padding: 0; margin: 0; border-radius: 99px;
+  background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--cond); font-size: 16px;
 }
-details.ex > summary::-webkit-details-marker { display: none; }
-details.ex > summary .exname { font-weight: 600; grid-row: 1; min-width: 0; overflow-wrap: anywhere; }
-details.ex > summary :is(.exstat, .play) { grid-row: 1; }
-details.ex > summary .target { margin: 0; grid-row: 2; grid-column: 1 / -1; font-size: 13px; }
-details.ex:has(.exstat[data-s=skip]) > summary .exname { text-decoration: line-through; color: var(--muted); }
+button.exdot[data-s=done] { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+button.exdot[data-s=part] { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
+button.exdot[data-s=skip] { text-decoration: line-through; }
+button.exdot[aria-current] { outline: 2px solid var(--text); outline-offset: 2px; }
+section.ex { padding: 10px 0 4px; }
+.exhead { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 2px 8px; margin-bottom: 6px; }
+.exhead .exname { margin: 0; font-size: 22px; line-height: 1.15; font-family: var(--cond); font-weight: 700; min-width: 0; overflow-wrap: anywhere; grid-row: 1; }
+.exhead :is(.exstat, .play) { grid-row: 1; }
+.exhead .target { margin: 0; grid-row: 2; grid-column: 1 / -1; font-size: 14px; }
+section.ex:has(.exstat[data-s=skip]) .exname { text-decoration: line-through; color: var(--muted); }
 .exstat {
   min-width: 34px; text-align: center; font-size: 15px; font-weight: 600; white-space: nowrap;
   padding: 1px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted);
@@ -222,16 +231,23 @@ details.ex:has(.exstat[data-s=skip]) > summary .exname { text-decoration: line-t
 .exstat[data-s=done] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .exstat[data-s=part] { border-color: var(--warn); color: var(--warn); }
 .exstat[data-s=skip] { text-decoration: line-through; }
-button.exstat { background: none; margin: -6px 0; min-height: 44px; min-width: 52px; cursor: pointer; }
+button.exstat { background: none; margin: 0; min-height: 44px; min-width: 52px; cursor: pointer; }
 button.exstat[data-s=done] { background: var(--accent); }
 .exstat[data-s=none] { font-size: 0; }
 .exstat[data-s=none]::after { content: '✓'; font-size: 15px; }
-details.ex > summary .play {
-  display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: -6px 0;
+.exhead .play {
+  display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: 0;
   border-radius: 99px; background: var(--surface-2); color: var(--accent);
 }
 .play .ic { fill: currentColor; stroke-width: 1.5; width: 16px; height: 16px; }
-details.ex[open] { padding-bottom: 8px; }
+/* En el gimnasio lo que queda fijo abajo es Anterior / Hecho, siguiente; "Terminé la sesión" va al final de la card. */
+.exmove {
+  display: grid; grid-template-columns: auto 1fr; gap: 8px; margin-top: 8px; padding: 8px 0;
+  position: sticky; bottom: calc(var(--tabs) + env(safe-area-inset-bottom)); z-index: 1; background: var(--surface);
+}
+.t-gym button.done-all { position: static; }
+.exmove button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; margin: 0; }
+button.exgo { background: none; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 /* Trote/campo: lectura + detalle de excepción */
 .read { margin: 4px 0 8px; padding-left: 22px; }
 .read li { padding: 4px 0; }

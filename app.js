@@ -118,7 +118,10 @@ function onEdit(e) {
   const item = itemByKey(key), prog = card.querySelector('.prog');
   if (prog) prog.textContent = progText(item, logs[key]);
   card.querySelector('.segs')?.replaceWith(...tpl(segs(item, logs[key])));
-  if (item?.type === 'gym') card.querySelectorAll('.exstat').forEach((el, i) => { el.textContent = exStatus(item.exercises[i], logs[key]?.ex?.[i]); el.dataset.s = statKind(el.textContent); });
+  if (item?.type === 'gym') {
+    card.querySelectorAll('.exstat').forEach((el, i) => { el.textContent = exStatus(item.exercises[i], logs[key]?.ex?.[i]); el.dataset.s = statKind(el.textContent); });
+    card.querySelectorAll('.exdot').forEach((el, i) => { el.dataset.s = statKind(exStatus(item.exercises[i], logs[key]?.ex?.[i])); });
+  }
   if (e.target.matches('textarea')) grow(e.target);
 }
 main.addEventListener('change', onEdit);
@@ -174,8 +177,17 @@ function exStatus(ex, l) {
   return d === sets.length ? '✓' : d ? `${d} de ${sets.length}` : '—';
 }
 
+// Ejercicio a la vista en cada sesión de gimnasio (por card). Arranca en el primero sin terminar.
+const exPos = {};
+const exDone = (ex, l) => l?.skip || P.setsOf(ex).every((_, j) => l?.sets?.[j]?.done);
+const startPos = (item, log) => Math.max(0, item.exercises.findIndex((ex, i) => !exDone(ex, log?.ex?.[i])));
+
+// Gimnasio: un ejercicio por vez, con Anterior / Siguiente. Todos quedan en la card (ocultos) para que serialize los lea.
 function gymBody(item, log, date) {
-  return item.exercises.map((ex, i) => {
+  const key = `${date}|${item.id}`, n = item.exercises.length;
+  const pos = exPos[key] = Math.min(exPos[key] ?? startPos(item, log), n - 1);
+  const dots = item.exercises.map((ex, i) => `<button type="button" class="exdot" data-to="${i}" data-s="${statKind(exStatus(ex, log?.ex?.[i]))}" ${i === pos ? 'aria-current="step"' : ''} aria-label="Ir a ${esc(ex.name)}">${i + 1}</button>`).join('');
+  return `<nav class="exnav" aria-label="Ejercicios"><span class="lbl">Ejercicio <b class="expos">${pos + 1}</b> de ${n}</span><div class="exdots">${dots}</div></nav>` + item.exercises.map((ex, i) => {
     const l = log?.ex?.[i];
     const id = P.exId(catalog, ex);
     const last = P.lastWeight(logs, { ex: id, name: ex.name }, date);
@@ -191,21 +203,37 @@ function gymBody(item, log, date) {
       </div>`;
     }).join('');
     const timedOnly = P.setsOf(ex).every(s => s.reps == null && s.time);
-    return `<details class="ex">
-      <summary>
-        <span class="exname">${esc(ex.name)}</span>
+    return `<section class="ex" data-i="${i}" ${i === pos ? '' : 'hidden'}>
+      <div class="exhead">
+        <h4 class="exname">${esc(ex.name)}</h4>
         <span class="target">${exerciseTarget(ex)}${!Array.isArray(ex.sets) && ex.weight == null && kgShown != null && !timedOnly ? ` · ${esc(kgShown)} kg` : ''}</span>
         <button type="button" class="exstat" data-s="${statKind(exStatus(ex, l))}" aria-label="Marcar o desmarcar todas las series">${exStatus(ex, l)}</button>
         ${catalog?.exercises?.[id]?.videos?.length ? `<button type="button" class="play" data-video="${esc(id)}" aria-label="Ver video de ${esc(ex.name)}">${IC.play}</button>` : ''}
-      </summary>
+      </div>
       <input type="hidden" data-p="ex.${i}.name" value="${esc(ex.name)}">${id ? `<input type="hidden" data-p="ex.${i}.ex" value="${esc(id)}">` : ''}
       ${ex.notes ? `<p class="target"><em>${esc(ex.notes)}</em></p>` : ''}
       ${timedOnly ? '' : `<label class="inline">kg para todas ${num('', null, String(kgShown ?? 'kg'), 'short kgall')}</label>`}
       ${rows}
       ${chk(`ex.${i}.skip`, l?.skip, 'No lo hice')}
       <details ${l?.note || l?.pain != null ? 'open' : ''}><summary>Nota / dolor</summary>${pain(`ex.${i}.pain`, l?.pain)}${note(`ex.${i}.note`, l?.note)}</details>
-    </details>`;
+      <div class="exmove">
+        <button type="button" class="exgo" data-to="${i - 1}" ${i ? '' : 'disabled'}>${IC.prev} Anterior</button>
+        <button type="button" class="exnext" data-to="${i + 1}">${i < n - 1 ? `Hecho, siguiente ${IC.next}` : 'Hecho ✓'}</button>
+      </div>
+    </section>`;
   }).join('');
+}
+
+// Muestra otro ejercicio de la card sin re-renderizar (los inputs quedan como están).
+function showEx(card, to) {
+  const secs = card.querySelectorAll('section.ex');
+  if (to < 0 || to >= secs.length) return;
+  exPos[card.dataset.key] = to;
+  secs.forEach((s, i) => { s.hidden = i !== to; });
+  card.querySelectorAll('.exdot').forEach((d, i) => { if (i === to) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+  card.querySelector('.expos').textContent = to + 1;
+  // Que el ejercicio nuevo arranque a la vista (en el celular, el anterior pudo quedar scrolleado).
+  card.querySelector('.exnav').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // Trote/campo: lista de lectura; tildar pasos queda escondido para cuando no se terminó.
@@ -509,8 +537,8 @@ function showVideo(id, msg = '') {
 }
 main.addEventListener('click', e => {
   const b = e.target.closest('.play');
-  if (b) { e.preventDefault(); showVideo(b.dataset.video); } // preventDefault: que no abra/cierre el ejercicio
-  // Estado del ejercicio: tilda todas las series (o las destilda si ya estaban todas), sin abrirlo.
+  if (b) { e.preventDefault(); showVideo(b.dataset.video); }
+  // Estado del ejercicio: tilda todas las series (o las destilda si ya estaban todas).
   const st = e.target.closest('.exstat');
   if (st) {
     e.preventDefault();
@@ -519,6 +547,22 @@ main.addEventListener('click', e => {
     boxes.forEach(c => { c.checked = on; });
     if (on) ex.querySelector('input[data-p$=".skip"]').checked = false;
     boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // Anterior / tocar un número: ir a ese ejercicio.
+  const go = e.target.closest('.exgo, .exdot');
+  if (go) showEx(go.closest('[data-key]'), Number(go.dataset.to));
+  // "Hecho, siguiente": tilda las series que falten (si no lo marcó como "No lo hice") y pasa al próximo.
+  const nx = e.target.closest('.exnext');
+  if (nx) {
+    const ex = nx.closest('.ex'), boxes = [...ex.querySelectorAll('input[data-p$=".done"]')];
+    if (!ex.querySelector('input[data-p$=".skip"]').checked && boxes.some(c => !c.checked)) {
+      boxes.forEach(c => { c.checked = true; });
+      boxes[0]?.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const card = nx.closest('[data-key]'), to = Number(nx.dataset.to);
+    // En el último: llevar a "Terminé la sesión".
+    if (to < card.querySelectorAll('section.ex').length) showEx(card, to);
+    else card.querySelector('.done-all')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
   if (e.target.id === 'seen') { ls.set('seenChange', e.target.dataset.at); e.target.closest('.changes').remove(); }
   if (e.target.matches('.done-all')) {

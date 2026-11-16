@@ -3,7 +3,8 @@
 ## Lo básico
 - **Hoy** muestra lo que te toca: gimnasio, trote, campo o lo que tengas que tildar. Un día vacío es descanso.
 - Cuando termines, tocá **✓ Terminé la sesión**. Todo lo que no tocaste se da por hecho tal como estaba planificado.
-- Si algo fue distinto, abrí el ejercicio:
+- En el gimnasio ves **un ejercicio por vez**. **Hecho, siguiente** tilda sus series y pasa al próximo; **Anterior** vuelve. Los números de arriba saltan a cualquier ejercicio y se pintan a medida que los completás.
+- Si algo fue distinto, cambialo en ese ejercicio:
   - **kg para todas** cambia el peso de todas las series.
   - Tildá solo las series que hiciste y cargá las reps de la última.
   - **No lo hice** marca el ejercicio como salteado.
